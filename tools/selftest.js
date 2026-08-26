@@ -114,6 +114,42 @@ ok(merged.report.addedAnswers.length === 1 && merged.report.removedAnswers.lengt
   'the merge report names the single addition');
 
 /* ---------------------------------------------------------------- */
+section('Hand-made headings and text');
+const withCustom = freshDoc(raw);
+const anchorIdx = withCustom.blocks.findIndex((b) => b.qid === '615330');
+const heading = window.Model.newBlock('heading', withCustom.style);
+heading.label = 'STAFF USE ONLY';
+withCustom.blocks.splice(anchorIdx + 1, 0, heading);
+const note = window.Model.newBlock('note', withCustom.style);
+note.label = 'Reviewed with the client on:';
+withCustom.blocks.push(note);
+
+let cres = window.Layout.layout(withCustom);
+ok(cres.boxes.some((x) => x.blockId === heading.id), 'a hand-made heading is laid out');
+ok(cres.pages.some((p) => p.ops.some((o) => o.t === 'text' && o.str === 'STAFF USE ONLY')),
+  'its wording reaches the page');
+ok(cres.pages.some((p) => p.ops.some((o) => o.t === 'rect' && Math.abs(o.h - cres.style.bannerH) < 0.01)),
+  'a heading draws a banner rectangle');
+ok(cres.warnings.filter((w) => w.level === 'error').length === 0,
+  'hand-made items need no field name');
+
+heading.kind = 'note';
+cres = window.Layout.layout(withCustom);
+ok(cres.pages.some((p) => p.ops.some((o) => o.t === 'text' && o.str === 'STAFF USE ONLY')),
+  'switching a heading to plain text keeps the wording');
+heading.kind = 'heading';
+
+const cMerged = window.Model.mergeDoc(withCustom, freshDoc(raw));
+const kept = cMerged.doc.blocks.filter((b) => !b.qid);
+ok(kept.length === 2, 're-import keeps both hand-made items', `got ${kept.length}`);
+ok(cMerged.report.custom === 2, 'the merge report counts them');
+const pos = cMerged.doc.blocks.findIndex((b) => b.id === heading.id);
+ok(cMerged.doc.blocks[pos - 1].qid === '615330',
+  'the heading comes back directly after the question it followed');
+ok(cMerged.doc.blocks[cMerged.doc.blocks.length - 1].id === note.id,
+  'a trailing item stays at the end');
+
+/* ---------------------------------------------------------------- */
 section('Naming validation');
 const dup = freshDoc(raw);
 dup.blocks.filter((b) => b.kind === 'text').slice(0, 2).forEach((b) => { b.name = 'same_name'; });

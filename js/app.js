@@ -133,7 +133,8 @@
         var bad = b.include && !window.Model.validName(b.name);
         nameEl = h('span.fname' + (bad ? '.bad' : ''), { text: b.name ? (b.kind === 'checks' ? b.name + '_n' : b.name) : '(unnamed)' });
       }
-      var row = h('div.blk' + (state.sel === b.id ? '.sel' : '') + (b.include ? '' : '.off'), {
+      var row = h('div.blk' + (state.sel === b.id ? '.sel' : '') + (b.include ? '' : '.off') +
+                  (b.qid ? '' : '.custom'), {
         draggable: 'true', data: { id: b.id },
         onclick: function (e) { if (e.target.type !== 'checkbox') select(b.id); }
       }, [
@@ -145,7 +146,8 @@
         h('div', {}, [
           h('div.lbl', { text: b.label || b.origText || '(empty)' }),
           h('div.meta', {}, [
-            h('span.kind.' + b.kind, { text: b.kind }),
+            h('span.kind.' + b.kind, { text: b.kind === 'note' ? 'text' : b.kind }),
+            b.qid ? null : h('span.count', { text: 'added' }),
             b.options ? h('span.count', { text: b.options.filter(function (o) { return o.include; }).length + '/' + b.options.length }) : null,
             nameEl,
             b.excludedReason ? h('span.flag', { text: b.excludedReason }) : null,
@@ -321,6 +323,21 @@
     return h('input', { type: 'number', step: step || 1, value: value,
       oninput: function (e) { onInput(parseFloat(e.target.value)); } });
   }
+
+  /* Wording box: drag the bottom-right corner to see a long label in full.
+     It starts tall enough for the text it holds, and newlines collapse to
+     spaces because a PDF label is a single line of text. */
+  function wordingBox(value, onInput) {
+    var ta = h('textarea', { class: 'wording', value: value == null ? '' : value,
+      oninput: function (e) {
+        if (e.target.value.indexOf('\n') >= 0) e.target.value = e.target.value.replace(/\s*\n\s*/g, ' ');
+        onInput(e.target.value);
+      } });
+    requestAnimationFrame(function () {
+      if (!ta.style.height) ta.style.height = Math.min(ta.scrollHeight + 2, 260) + 'px';
+    });
+    return ta;
+  }
   function check(labelText, value, onChange) {
     return h('label', { style: 'display:flex;gap:7px;align-items:center;font-size:11.5px;color:var(--text-dim);margin-bottom:7px' }, [
       h('input', { type: 'checkbox', checked: value, onchange: function (e) { onChange(e.target.checked); } }),
@@ -346,11 +363,13 @@
     var sec = h('div.sec', {}, [h('h3', { text: 'Item' })]);
     sec.appendChild(check('Include in the PDF', b.include, function (v) { b.include = v; render(); }));
     sec.appendChild(check('Start a new page here', b.pageBreakBefore, function (v) { b.pageBreakBefore = v; render(); }));
-    sec.appendChild(inline('Space above', numInput(b.spaceBefore || 0, function (v) { b.spaceBefore = v || 0; render(); }, 1)));
+    sec.appendChild(inline('Space above', numInput(b.spaceBefore || 0, function (v) { b.spaceBefore = v || 0; refresh(); }, 1)));
     body.appendChild(sec);
 
     if (b.kind === 'checks' || b.kind === 'text') body.appendChild(nameSection(b));
-    body.appendChild(labelSection(b));
+    else body.appendChild(kindSection(b));
+    if (b.kind !== 'spacer') body.appendChild(labelSection(b));
+    if (b.kind === 'spacer') body.appendChild(spacerSection(b));
     if (b.kind === 'checks') body.appendChild(optionSection(b));
     if (b.kind === 'text') body.appendChild(textFieldSection(b));
     if (b.kind === 'heading') body.appendChild(colorSection(b));
@@ -358,13 +377,48 @@
     body.appendChild(originSection(b));
   }
 
+  /* Labels carry no answers, so they are free to be a banner, plain text or a
+     gap — and so is anything added by hand. */
+  function kindSection(b) {
+    var kids = [
+      h('h3', { text: 'Shown as' }),
+      pills([{ label: 'Heading', value: 'heading' }, { label: 'Text', value: 'note' },
+             { label: 'Gap', value: 'spacer' }], b.kind, function (v) {
+        b.kind = v;
+        if (v === 'heading' && !b.colorKey) { b.colorKey = 'gy'; b.color = window.Model.BANNER_COLORS.gy; }
+        if (v === 'spacer' && !b.height) b.height = 10;
+        render();
+      }),
+      h('div.hintline', { text: b.kind === 'heading'
+        ? 'A full-width coloured band across the page.'
+        : b.kind === 'spacer' ? 'Blank vertical space.' : 'A line of plain text.' })
+    ];
+    if (!b.qid) {
+      kids.push(h('button.btn.sm', {
+        style: 'margin-top:10px', text: 'Delete this item',
+        onclick: function () {
+          state.doc.blocks = state.doc.blocks.filter(function (x) { return x.id !== b.id; });
+          state.sel = null;
+          render();
+        }
+      }));
+    }
+    return h('div.sec', {}, kids);
+  }
+
+  function spacerSection(b) {
+    return h('div.sec', {}, [
+      h('h3', { text: 'Gap' }),
+      inline('Height (pt)', numInput(b.height || 10, function (v) { b.height = v || 10; refresh(); }, 1))
+    ]);
+  }
+
   function nameSection(b) {
     var bad = !window.Model.validName(b.name);
     var inp = textInput(b.name, function (v) {
       b.name = v.trim();
-      render();
-      var el = document.querySelector('#inspBody input.mono');
-      if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+      inp.classList.toggle('bad', !window.Model.validName(b.name));
+      refresh();
     }, 'mono' + (bad ? ' bad' : ''));
     var preview = b.kind === 'checks'
       ? b.options.filter(function (o) { return o.include; })
@@ -383,17 +437,17 @@
 
   function labelSection(b) {
     var kids = [h('h3', { text: 'Wording on the page' }),
-      field('Label', textInput(b.label, function (v) { b.label = v; render(); }))];
+      field('Label', wordingBox(b.label, function (v) { b.label = v; refresh(); }))];
     if (b.kind === 'checks' || b.kind === 'text') {
       kids.push(field('Hint (small grey italic, after the label)',
-        textInput(b.hint, function (v) { b.hint = v; render(); })));
+        wordingBox(b.hint, function (v) { b.hint = v; refresh(); })));
     }
     if (window.Model.needsCommaRepair(b.label)) {
       kids.push(h('button.btn.sm', { text: 'Restore stripped commas', onclick: function () {
         b.label = window.Model.repairCommas(b.label); render();
       } }));
     }
-    if (b.label !== b.origText) {
+    if (b.qid && b.label !== b.origText) {
       kids.push(h('button.btn.sm.ghost', { style: 'margin-top:6px', text: 'Reset to Credible wording',
         onclick: function () { b.label = b.origText; render(); } }));
     }
@@ -416,14 +470,14 @@
         h('span.idx', { text: String(o.index), title: 'Credible answer position — the number in ' + b.name + '_' + o.index }),
         h('input', { type: 'checkbox', checked: o.include,
           onchange: function (e) { o.include = e.target.checked; render(); } }),
-        h('input', { type: 'text', value: o.text,
-          oninput: function (e) { o.text = e.target.value; scheduleRender(); } })
+        h('input', { type: 'text', value: o.text, title: o.text,
+          oninput: function (e) { o.text = e.target.value; refresh(); } })
       ]);
       wireOptionDrag(row, b);
       list.appendChild(row);
     });
     wrap.appendChild(list);
-    wrap.appendChild(h('div.hintline', {
+    wrap.appendChild(h('div.opt-hint', {
       text: 'The number is the answer\'s position in the Credible export and never changes when you drag rows or hide answers — so a name can never end up on the wrong answer.'
     }));
     if (b.options.some(function (o) { return window.Model.needsCommaRepair(o.text); })) {
@@ -461,8 +515,8 @@
         if (v && !b.height) b.height = 22;
         render();
       }),
-      b.multiline ? inline('Height (pt)', numInput(b.height || 22, function (v) { b.height = v || 22; render(); }, 1)) : null,
-      !b.multiline ? inline('Max chars', numInput(b.maxLen || 0, function (v) { b.maxLen = v || 0; render(); }, 10)) : null
+      b.multiline ? inline('Height (pt)', numInput(b.height || 22, function (v) { b.height = v || 22; refresh(); }, 1)) : null,
+      !b.multiline ? inline('Max chars', numInput(b.maxLen || 0, function (v) { b.maxLen = v || 0; refresh(); }, 10)) : null
     ]);
   }
 
@@ -482,13 +536,19 @@
   function noteSection(b) {
     return h('div.sec', {}, [
       h('h3', { text: 'Note style' }),
-      inline('Size (pt)', numInput(b.size || state.res.style.noteSize, function (v) { b.size = v || 7; render(); }, 0.2)),
+      inline('Size (pt)', numInput(b.size || state.res.style.noteSize, function (v) { b.size = v || 7; refresh(); }, 0.2)),
       check('Bold', b.bold, function (v) { b.bold = v; render(); }),
       check('Italic', b.italic, function (v) { b.italic = v; render(); })
     ]);
   }
 
   function originSection(b) {
+    if (!b.qid) {
+      return h('div.sec', {}, [
+        h('h3', { text: 'Added by hand' }),
+        h('div.hintline', { text: 'This item is not from the Credible export. It stays put when you re-import an updated export.' })
+      ]);
+    }
     var kids = [h('h3', { text: 'In Credible' }),
       h('div.hintline', { text: 'Question: ' + (b.origText || '—') })];
     if (b.options) {
@@ -503,33 +563,33 @@
     var d = state.doc, st = d.style;
     body.appendChild(h('div.sec', {}, [
       h('h3', { text: 'Masthead' }),
-      field('Title', textInput(d.header.title, function (v) { d.header.title = v; render(); })),
-      field('Top-right note', textInput(d.header.note, function (v) { d.header.note = v; render(); })),
-      field('Intro line', textInput(d.header.intro, function (v) { d.header.intro = v; render(); }))
+      field('Title', wordingBox(d.header.title, function (v) { d.header.title = v; refresh(); })),
+      field('Top-right note', wordingBox(d.header.note, function (v) { d.header.note = v; refresh(); })),
+      field('Intro line', wordingBox(d.header.intro, function (v) { d.header.intro = v; refresh(); }))
     ]));
 
     body.appendChild(h('div.sec', {}, [
       h('h3', { text: 'Page' }),
-      inline('Width (pt)', numInput(st.pageW, function (v) { st.pageW = v; render(); }, 1)),
-      inline('Height (pt)', numInput(st.pageH, function (v) { st.pageH = v; render(); }, 1)),
-      inline('Margin top', numInput(st.marginTop, function (v) { st.marginTop = v; render(); }, 1)),
-      inline('Margin left', numInput(st.marginLeft, function (v) { st.marginLeft = v; render(); }, 1)),
-      inline('Margin right', numInput(st.marginRight, function (v) { st.marginRight = v; render(); }, 1)),
-      inline('Margin bottom', numInput(st.marginBottom, function (v) { st.marginBottom = v; render(); }, 1)),
+      inline('Width (pt)', numInput(st.pageW, function (v) { st.pageW = v; refresh(); }, 1)),
+      inline('Height (pt)', numInput(st.pageH, function (v) { st.pageH = v; refresh(); }, 1)),
+      inline('Margin top', numInput(st.marginTop, function (v) { st.marginTop = v; refresh(); }, 1)),
+      inline('Margin left', numInput(st.marginLeft, function (v) { st.marginLeft = v; refresh(); }, 1)),
+      inline('Margin right', numInput(st.marginRight, function (v) { st.marginRight = v; refresh(); }, 1)),
+      inline('Margin bottom', numInput(st.marginBottom, function (v) { st.marginBottom = v; refresh(); }, 1)),
       h('div.hintline', { text: 'Letter is 612 × 792 pt. A4 is 595 × 842.' })
     ]));
 
     body.appendChild(h('div.sec', {}, [
       h('h3', { text: 'Type & spacing' }),
-      inline('Question', numInput(st.qSize, function (v) { st.qSize = v; render(); }, 0.1)),
-      inline('Answer', numInput(st.optSize, function (v) { st.optSize = v; render(); }, 0.1)),
-      inline('Hint', numInput(st.hintSize, function (v) { st.hintSize = v; render(); }, 0.1)),
-      inline('Banner', numInput(st.bannerSize, function (v) { st.bannerSize = v; render(); }, 0.1)),
-      inline('Row pitch', numInput(st.pitch, function (v) { st.pitch = v; render(); }, 0.1)),
-      inline('Gap between items', numInput(st.blockGap, function (v) { st.blockGap = v; render(); }, 0.5)),
-      inline('Checkbox size', numInput(st.boxSize, function (v) { st.boxSize = v; render(); }, 0.5)),
-      inline('Field height', numInput(st.fieldH, function (v) { st.fieldH = v; render(); }, 0.5)),
-      inline('Default max chars', numInput(st.fieldMaxLen, function (v) { st.fieldMaxLen = v; render(); }, 10))
+      inline('Question', numInput(st.qSize, function (v) { st.qSize = v; refresh(); }, 0.1)),
+      inline('Answer', numInput(st.optSize, function (v) { st.optSize = v; refresh(); }, 0.1)),
+      inline('Hint', numInput(st.hintSize, function (v) { st.hintSize = v; refresh(); }, 0.1)),
+      inline('Banner', numInput(st.bannerSize, function (v) { st.bannerSize = v; refresh(); }, 0.1)),
+      inline('Row pitch', numInput(st.pitch, function (v) { st.pitch = v; refresh(); }, 0.1)),
+      inline('Gap between items', numInput(st.blockGap, function (v) { st.blockGap = v; refresh(); }, 0.5)),
+      inline('Checkbox size', numInput(st.boxSize, function (v) { st.boxSize = v; refresh(); }, 0.5)),
+      inline('Field height', numInput(st.fieldH, function (v) { st.fieldH = v; refresh(); }, 0.5)),
+      inline('Default max chars', numInput(st.fieldMaxLen, function (v) { st.fieldMaxLen = v; refresh(); }, 10))
     ]));
 
     body.appendChild(h('div.sec', {}, [
@@ -541,14 +601,53 @@
     ]));
   }
 
-  var renderTimer = null;
-  function scheduleRender() {
-    clearTimeout(renderTimer);
-    renderTimer = setTimeout(function () {
+  /* Redraw everything the edit affects while leaving the inspector alone.
+     Rebuilding it under a focused input would steal the caret on every
+     keystroke, so any handler attached to a text or number field uses this. */
+  /* New items land after whatever is selected, which is where the eye is. */
+  function addBlock(kind) {
+    var b = window.Model.newBlock(kind, state.doc.style);
+    var at = state.sel ? state.doc.blocks.findIndex(function (x) { return x.id === state.sel; }) + 1
+                       : state.doc.blocks.length;
+    state.doc.blocks.splice(at, 0, b);
+    state.sel = b.id;
+    render();
+    var ta = document.querySelector('#inspBody textarea.wording');
+    if (ta) { ta.focus(); ta.select(); }
+  }
+
+  function showAddMenu(anchor) {
+    var open = document.querySelector('.addmenu');
+    if (open) { open.remove(); return; }
+    var r = anchor.getBoundingClientRect();
+    var menu = h('div.addmenu', { style: 'left:' + r.left + 'px;top:' + (r.bottom + 4) + 'px' }, [
+      h('div', { onclick: function () { addBlock('heading'); menu.remove(); } },
+        [document.createTextNode('Heading'), h('span', { text: 'coloured band across the page' })]),
+      h('div', { onclick: function () { addBlock('note'); menu.remove(); } },
+        [document.createTextNode('Text'), h('span', { text: 'a line of your own wording' })]),
+      h('div', { onclick: function () { addBlock('spacer'); menu.remove(); } },
+        [document.createTextNode('Gap'), h('span', { text: 'blank vertical space' })])
+    ]);
+    document.body.appendChild(menu);
+    setTimeout(function () {
+      document.addEventListener('click', function close(e) {
+        if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', close); }
+      });
+    }, 0);
+  }
+
+  var refreshPending = false;
+  function refresh() {
+    if (refreshPending) return;
+    refreshPending = true;
+    requestAnimationFrame(function () {
+      refreshPending = false;
+      if (!state.doc) return;
       state.res = window.Layout.layout(state.doc);
       renderPages(); renderWarnings(); renderOutline(); save();
-    }, 260);
+    });
   }
+  var scheduleRender = refresh;
 
   function autoName() {
     var taken = {};
@@ -731,6 +830,31 @@
       alert(n ? 'Restored commas in ' + n + ' item(s). Check the wording — the export drops commas, so this is a best guess.'
               : 'Nothing looked like a stripped comma.');
     };
+    $('btnAdd').onclick = function (e) { e.stopPropagation(); showAddMenu(e.currentTarget); };
+
+    var savedW = null;
+    try { savedW = localStorage.getItem('ptm.inspW'); } catch (e) { /* private mode */ }
+    if (savedW) document.documentElement.style.setProperty('--insp-w', savedW + 'px');
+    var grip = $('inspGrip');
+    grip.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      grip.setPointerCapture(e.pointerId);
+      document.body.classList.add('resizing');
+      function move(ev) {
+        var w = Math.max(280, Math.min(760, window.innerWidth - ev.clientX));
+        document.documentElement.style.setProperty('--insp-w', w + 'px');
+      }
+      function up() {
+        grip.removeEventListener('pointermove', move);
+        grip.removeEventListener('pointerup', up);
+        document.body.classList.remove('resizing');
+        var w = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--insp-w'), 10);
+        try { localStorage.setItem('ptm.inspW', w); } catch (err) { /* private mode */ }
+      }
+      grip.addEventListener('pointermove', move);
+      grip.addEventListener('pointerup', up);
+    });
+
     $('zIn').onclick = function () { setScale(state.scale * 1.15); };
     $('zOut').onclick = function () { setScale(state.scale / 1.15); };
     $('zFit').onclick = fit;

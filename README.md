@@ -23,9 +23,12 @@ or use **Import export…**.
    `plan_for_1 … plan_for_5`; a text question keeps the bare name. This is the
    name you type into the Credible exporter as the rename.
 3. **Arrange.** Drag items to reorder, set one to three columns per question,
-   force a page break, adjust spacing. Every label is editable, and a hint can
-   be split off into small grey italic after the label. Reordering answers
-   inside a question changes only where they sit on the page.
+   force a page break, adjust spacing. Every label is editable — drag the
+   corner of the wording box to see a long one in full — and a hint can be
+   split off into small grey italic after the label. Reordering answers inside
+   a question changes only where they sit on the page.
+
+   Drag the left edge of the inspector to widen it; the width is remembered.
 4. **Export.** **Export PDF** writes the fillable form. **Name list** shows
    every field beside the untouched Credible wording, to copy or download as
    CSV. **Save layout** writes a JSON file — keep it, it is what lets you
@@ -34,6 +37,30 @@ or use **Import export…**.
 Re-importing an export for a form you already have a layout for merges rather
 than replaces: names, wording, columns and order carry over, and the tool
 reports which questions and answers Credible has added or removed since.
+
+## Headings and your own text
+
+An item becomes a heading — a full-width coloured band — when its label in
+Credible is wrapped in a colour span marked `fullw`, as in
+`<span class='re fullw'>ON FIRE</span>`. A colour span *without* `fullw` is
+inline emphasis, so it stays plain text. Label questions that hold nothing but
+CSS are dropped entirely.
+
+That is only the starting guess. Select any label item and the inspector offers
+**Shown as: Heading · Text · Gap** — promote a plain line to a banner, demote a
+banner, or turn either into blank space. Headings pick their band colour from
+the nine swatches below the switch.
+
+The **+** button above the item list adds a **Heading**, **Text** or **Gap** of
+your own. It lands directly after whatever is selected, so select the item it
+should follow first. Hand-made items need no field name, carry no Credible
+question, and can be deleted from the inspector.
+
+They also survive re-import: because they have no question id, the merge
+remembers which question each one followed and puts it back in the same place.
+
+Questions cannot be turned into headings — they own field names and answers,
+and converting one would throw those away. Untick it and add a heading instead.
 
 ## The numbering rule
 
