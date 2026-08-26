@@ -204,10 +204,18 @@
   }
 
   /* Re-import: carry names, edited text and layout across to a new export.
-     Matching is by question_id / answer_id. */
+     Matching is by question_id / answer_id. Blocks the user added by hand have
+     no question_id, so they are remembered by the item they follow and spliced
+     back into the same place. */
   function mergeDoc(oldDoc, newDoc) {
-    var oldBlocks = {}, report = { kept: 0, addedQuestions: [], removedQuestions: [], addedAnswers: [], removedAnswers: [] };
+    var oldBlocks = {}, report = { kept: 0, custom: 0, addedQuestions: [], removedQuestions: [], addedAnswers: [], removedAnswers: [] };
     oldDoc.blocks.forEach(function (b) { if (b.qid) oldBlocks[b.qid] = b; });
+
+    var customs = [], anchor = null;
+    oldDoc.blocks.forEach(function (b) {
+      if (b.qid) anchor = b.qid;
+      else { customs.push({ block: b, after: anchor }); report.custom++; }
+    });
 
     var merged = newDoc.blocks.map(function (nb) {
       var ob = oldBlocks[nb.qid];
@@ -260,14 +268,35 @@
       report.removedQuestions.push(oldBlocks[qid].label || oldBlocks[qid].origText);
     });
 
+    customs.forEach(function (c) {
+      var at = c.after === null ? 0 : merged.findIndex(function (b) { return b.qid === c.after; }) + 1;
+      merged.splice(at > 0 ? at : merged.length, 0, c.block);
+    });
+
     newDoc.blocks = merged;
     newDoc.header = oldDoc.header;
     newDoc.style = oldDoc.style;
     return { doc: newDoc, report: report };
   }
 
+  /* A heading, note or gap the user adds by hand. It carries no question_id,
+     which is what marks it as theirs on re-import. */
+  var customSeq = 0;
+  function newBlock(kind, style) {
+    customSeq++;
+    var b = {
+      id: 'c' + Date.now().toString(36) + '_' + customSeq,
+      qid: null, format: 'CUSTOM', kind: kind, include: true,
+      origText: '', label: '', hint: '', spaceBefore: 0, pageBreakBefore: false
+    };
+    if (kind === 'heading') { b.label = 'New section'; b.colorKey = 'gy'; b.color = BANNER_COLORS.gy; }
+    if (kind === 'note') { b.label = 'New text'; b.size = style ? style.noteSize : 7; }
+    if (kind === 'spacer') { b.height = 10; }
+    return b;
+  }
+
   global.Model = {
-    buildForm: buildForm, buildDoc: buildDoc, mergeDoc: mergeDoc,
+    buildForm: buildForm, buildDoc: buildDoc, mergeDoc: mergeDoc, newBlock: newBlock,
     stripHtml: stripHtml, repairCommas: repairCommas, needsCommaRepair: needsCommaRepair,
     suggestName: suggestName, validName: validName, BANNER_COLORS: BANNER_COLORS
   };

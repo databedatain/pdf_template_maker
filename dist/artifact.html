@@ -1,0 +1,2171 @@
+<title>PDF Template Maker</title>
+
+
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* PDF Template Maker — drafting-table palette: graphite chrome, warm paper,
+   ochre for anything that becomes a named field. */
+:root {
+  --ink:       #14171c;
+  --panel:     #1b1f26;
+  --panel-2:   #22272f;
+  --panel-3:   #2b313a;
+  --line:      #333a45;
+  --line-soft: #2a303a;
+  --text:      #d9dee6;
+  --text-dim:  #8d97a5;
+  --text-mute: #626c7a;
+  --text-help: #a4afbd;
+  --ochre:     #e0a141;
+  --ochre-dim: #8a6426;
+  --teal:      #4bb3a6;
+  --rust:      #d2624a;
+  --paper:     #fbfaf7;
+  --field:     #ccd7ff;
+  --radius:    3px;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: "IBM Plex Sans", -apple-system, "Segoe UI", Helvetica, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+body {
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--ink);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, select, textarea { font-family: inherit; font-size: inherit; color: inherit; }
+
+/* ---------- shell ---------- */
+#app { display: grid; grid-template-rows: 46px 1fr auto; height: 100%; }
+
+#topbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 14px;
+  background: linear-gradient(180deg, #23282f, #1a1e24);
+  border-bottom: 1px solid var(--line);
+}
+#topbar .brand {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ochre);
+  padding-right: 12px; border-right: 1px solid var(--line);
+}
+#topbar .formname { font-size: 12px; color: var(--text-dim); }
+#topbar .formname b { color: var(--text); font-weight: 600; }
+#topbar .spacer { flex: 1; }
+
+.btn {
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 5px 11px; cursor: pointer;
+  color: var(--text); white-space: nowrap;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.btn:hover { background: var(--panel-3); border-color: #414a57; }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--ochre); border-color: var(--ochre); color: #221a08; font-weight: 600; }
+.btn.primary:hover { background: #ecb055; }
+.btn.ghost { background: transparent; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn.sm { padding: 3px 8px; font-size: 11px; }
+
+/* ---------- three panes ---------- */
+#main { display: grid; grid-template-columns: 320px 1fr var(--insp-w, 340px); min-height: 0; }
+.pane { min-height: 0; min-width: 0; display: flex; flex-direction: column; background: var(--panel); }
+#outline { border-right: 1px solid var(--line); }
+#inspector { border-left: 1px solid var(--line); position: relative; }
+
+#inspGrip {
+  position: absolute; left: -4px; top: 0; bottom: 0; width: 9px; z-index: 5;
+  cursor: col-resize; touch-action: none;
+}
+#inspGrip::after {
+  content: ''; position: absolute; left: 3px; top: 0; bottom: 0; width: 3px;
+  background: var(--ochre); opacity: 0; transition: opacity .12s;
+}
+#inspGrip:hover::after, body.resizing #inspGrip::after { opacity: .75; }
+body.resizing { cursor: col-resize; user-select: none; }
+
+.pane-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-bottom: 1px solid var(--line-soft);
+  font-family: var(--mono); font-size: 10px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--text-mute);
+  background: var(--panel-2);
+}
+.pane-head .spacer { flex: 1; }
+.pane-body { flex: 1; overflow-y: auto; overflow-x: hidden; }
+.pane-body::-webkit-scrollbar { width: 10px; }
+.pane-body::-webkit-scrollbar-thumb { background: #333a45; border: 3px solid var(--panel); border-radius: 6px; }
+
+/* ---------- outline list ---------- */
+.blk {
+  display: grid; grid-template-columns: 14px 16px 1fr; gap: 7px; align-items: start;
+  padding: 7px 12px 7px 6px;
+  border-bottom: 1px solid var(--line-soft);
+  cursor: pointer; position: relative;
+}
+.blk:hover { background: var(--panel-2); }
+.blk.sel { background: #2a2419; }
+.blk.sel::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--ochre);
+}
+.blk.off { opacity: .42; }
+.blk.dragover { box-shadow: inset 0 2px 0 var(--ochre); }
+.blk .grip { color: var(--text-mute); cursor: grab; font-size: 11px; line-height: 1.5; user-select: none; }
+.blk .inc { margin-top: 2px; accent-color: var(--ochre); }
+.blk .lbl { font-size: 12px; line-height: 1.35; overflow: hidden; }
+.blk .meta { display: flex; align-items: center; gap: 6px; margin-top: 3px; flex-wrap: wrap; }
+.kind {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+  padding: 1px 5px; border-radius: 2px; border: 1px solid var(--line);
+  color: var(--text-mute);
+}
+.kind.checks { color: var(--teal); border-color: #2d4f4a; }
+.kind.text   { color: #7fa8e0; border-color: #2c3f57; }
+.kind.heading{ color: var(--rust); border-color: #55302a; }
+.kind.note   { color: var(--text-mute); }
+.fname { font-family: var(--mono); font-size: 10.5px; color: var(--ochre); }
+.fname.bad { color: var(--rust); text-decoration: underline wavy; }
+.count { font-family: var(--mono); font-size: 10px; color: var(--text-mute); }
+.flag { font-size: 10px; color: var(--rust); }
+
+/* ---------- canvas / preview ---------- */
+#canvasPane { background: #0f1216; position: relative; min-width: 0; }
+#pages { flex: 1; overflow: auto; padding: 24px; display: flex; flex-direction: column;
+         align-items: center; align-items: safe center; gap: 22px; }
+#pages::-webkit-scrollbar { width: 12px; height: 12px; }
+#pages::-webkit-scrollbar-thumb { background: #2b313a; border: 3px solid #0f1216; border-radius: 6px; }
+
+.sheet {
+  position: relative; background: var(--paper);
+  box-shadow: 0 2px 4px rgba(0,0,0,.5), 0 18px 40px rgba(0,0,0,.45);
+  flex: none;
+}
+.sheet canvas { display: block; }
+.sheet .pageno {
+  position: absolute; top: -18px; left: 0;
+  font-family: var(--mono); font-size: 10px; color: var(--text-mute); letter-spacing: .1em;
+}
+.hit { position: absolute; cursor: pointer; }
+.hit:hover { background: rgba(224,161,65,.10); outline: 1px dashed rgba(224,161,65,.5); }
+.hit.sel { background: rgba(224,161,65,.13); outline: 1.5px solid var(--ochre); }
+.fld { position: absolute; pointer-events: none; }
+.fld.check { border: 1px solid rgba(20,40,120,.55); background: rgba(204,215,255,.35); }
+.fld.sel { outline: 1.5px solid var(--ochre); outline-offset: 1px; }
+.fld .tag {
+  position: absolute; white-space: nowrap;
+  font-family: var(--mono); font-size: 8px; line-height: 10px; color: #2f4bad;
+  background: rgba(255,255,255,.9); padding: 0 2px; border-radius: 2px;
+  box-shadow: 0 0 0 .5px rgba(47,75,173,.25);
+  opacity: 0; transition: opacity .12s;
+}
+.fld.check .tag { left: -1px; bottom: 100%; margin-bottom: 1px; }
+.fld.textf .tag { right: 2px; top: 50%; transform: translateY(-50%); }
+/* Names stay out of the way until you ask for them: the selected item always
+   shows its own, and the toggle reveals every one for a final audit. */
+.fld.sel .tag, .sheet.shownames .fld .tag { opacity: 1; }
+
+#zoombar {
+  position: absolute; right: 14px; bottom: 14px; display: flex; gap: 6px; align-items: center;
+  background: rgba(27,31,38,.94); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 5px 8px; backdrop-filter: blur(4px);
+}
+#zoombar .z { font-family: var(--mono); font-size: 11px; color: var(--text-dim); min-width: 38px; text-align: center; }
+
+/* ---------- inspector ---------- */
+.sec { border-bottom: 1px solid var(--line-soft); padding: 12px 14px; }
+.sec h3 {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--text-mute); font-weight: 500; margin-bottom: 10px;
+}
+.row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.row:last-child { margin-bottom: 0; }
+.row label { flex: none; width: 84px; font-size: 11px; color: var(--text-dim); }
+.row.stack { display: block; }
+.row.stack label { display: block; width: auto; margin-bottom: 4px; }
+
+input[type=text], input[type=number], textarea, select {
+  width: 100%; background: var(--ink); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 5px 7px; outline: none;
+}
+input:focus, textarea:focus, select:focus { border-color: var(--ochre-dim); box-shadow: 0 0 0 2px rgba(224,161,65,.13); }
+textarea { resize: vertical; min-height: 46px; line-height: 1.45; }
+textarea.wording { min-height: 30px; font-size: 12px; }
+input.mono { font-family: var(--mono); color: var(--ochre); }
+input.mono.bad { border-color: var(--rust); color: var(--rust); }
+input[type=checkbox] { accent-color: var(--ochre); width: auto; }
+.hintline { font-size: 11px; color: var(--text-help); line-height: 1.5; margin-top: 5px; }
+.pill-row { display: flex; gap: 5px; flex: 1; }
+.pill {
+  flex: 1; min-width: 42px; text-align: center; padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius); cursor: pointer; font-size: 11.5px; background: var(--panel-2);
+  transition: background .12s, border-color .12s;
+}
+.pill:hover { background: var(--panel-3); border-color: #414a57; }
+.pill.on { background: var(--ochre); border-color: var(--ochre); color: #221a08; font-weight: 600; }
+.swatches { display: flex; gap: 5px; flex-wrap: wrap; }
+.sw { width: 22px; height: 22px; border-radius: 2px; border: 2px solid transparent; cursor: pointer; }
+.sw.on { border-color: var(--ochre); }
+
+/* option editor */
+.opt {
+  display: grid; grid-template-columns: 12px 26px 14px 1fr; gap: 6px; align-items: center;
+  padding: 4px 0; border-bottom: 1px solid var(--line-soft);
+}
+.opt .grip { color: var(--text-mute); cursor: grab; font-size: 10px; }
+.opt .idx {
+  font-family: var(--mono); font-size: 10px; color: var(--ochre);
+  background: #241f14; border-radius: 2px; padding: 1px 3px; text-align: center;
+}
+.opt.off { opacity: .4; }
+.opt.dragover { box-shadow: inset 0 2px 0 var(--ochre); }
+.opt input[type=text] { padding: 3px 5px; font-size: 11px; }
+.opt.isnew .idx { background: #3b2a12; color: #ffce7a; }
+
+/* ---------- warnings ---------- */
+#warnbar {
+  border-top: 1px solid var(--line); background: var(--panel);
+  max-height: 132px; overflow-y: auto;
+}
+#warnbar .wh {
+  position: sticky; top: 0; background: var(--panel-2); padding: 5px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-mute); display: flex; gap: 10px; align-items: center;
+}
+.warn { padding: 5px 14px; font-size: 11.5px; border-bottom: 1px solid var(--line-soft); cursor: pointer; line-height: 1.4; }
+.warn:hover { background: var(--panel-2); }
+.warn .lv { font-family: var(--mono); font-size: 9px; padding: 1px 5px; border-radius: 2px; margin-right: 8px; }
+.warn.error .lv { background: #4a1f18; color: #f08a72; }
+.warn.warn  .lv { background: #4a3a12; color: #f0c572; }
+.warn.info  .lv { background: #1e3436; color: #7fd0c6; }
+.badge {
+  font-family: var(--mono); font-size: 10px; padding: 1px 6px; border-radius: 8px;
+  background: var(--panel-3); color: var(--text-dim);
+}
+.badge.err { background: #4a1f18; color: #f08a72; }
+
+/* ---------- modal ---------- */
+.modal-bg {
+  position: fixed; inset: 0; background: rgba(8,10,13,.72); display: flex;
+  align-items: center; justify-content: center; z-index: 50; padding: 40px;
+}
+.modal {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 5px;
+  width: min(980px, 100%); max-height: 100%; display: flex; flex-direction: column;
+  box-shadow: 0 24px 70px rgba(0,0,0,.6);
+}
+.modal .mh {
+  padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px;
+}
+.modal .mh h2 { font-size: 14px; font-weight: 600; }
+.modal .mb { padding: 14px 16px; overflow: auto; }
+.opt-hint { font-size: 11px; color: var(--text-help); line-height: 1.5; margin-top: 8px; }
+.modal .mf { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; }
+
+table.names { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+table.names th {
+  text-align: left; font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-mute); padding: 6px 8px;
+  border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel);
+}
+table.names td { padding: 5px 8px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+table.names td.n { font-family: var(--mono); color: var(--ochre); white-space: nowrap; }
+table.names tr.grp td { background: var(--panel-2); }
+
+.addmenu {
+  position: absolute; z-index: 20; background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(0,0,0,.5); padding: 4px; min-width: 176px;
+}
+.addmenu div {
+  padding: 6px 10px; border-radius: 2px; cursor: pointer; font-size: 12px;
+}
+.addmenu div:hover { background: var(--panel-3); }
+.addmenu div span { display: block; font-size: 10.5px; color: var(--text-help); margin-top: 1px; }
+
+.blk.custom .lbl { font-style: italic; }
+.kind.spacer { color: var(--text-mute); }
+
+.empty { padding: 40px 24px; text-align: center; color: var(--text-mute); font-size: 12px; line-height: 1.7; }
+.empty b { color: var(--text-dim); display: block; margin-bottom: 6px; font-size: 13px; }
+.dropzone { position: fixed; inset: 0; z-index: 60; background: rgba(224,161,65,.10);
+  border: 3px dashed var(--ochre); display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ochre); }
+
+</style>
+<div id="app">
+
+  <div id="topbar">
+    <span class="brand">PDF Template Maker</span>
+    <span class="formname" id="formName">no form loaded</span>
+    <span class="spacer"></span>
+    <button class="btn" id="btnImport">Import export…</button>
+    <button class="btn" id="btnLoadLayout">Open layout…</button>
+    <button class="btn" id="btnSaveLayout" disabled>Save layout</button>
+    <button class="btn" id="btnNames" disabled>Name list</button>
+    <button class="btn primary" id="btnPdf" disabled>Export PDF</button>
+  </div>
+
+  <div id="main">
+
+    <div class="pane" id="outline">
+      <div class="pane-head">
+        <span>Form items</span>
+        <span class="spacer"></span>
+        <button class="btn sm ghost" id="btnAllOn" title="Include every item">all</button>
+        <button class="btn sm ghost" id="btnAllOff" title="Exclude every item">none</button>
+        <button class="btn sm ghost" id="btnRepair" title="Restore commas the Credible export stripped">commas</button>
+        <button class="btn sm" id="btnAdd" title="Add a heading, note or gap of your own">+</button>
+      </div>
+      <div class="pane-body" id="blockList"></div>
+    </div>
+
+    <div class="pane" id="canvasPane">
+      <div id="pages"></div>
+      <div id="zoombar">
+        <button class="btn sm" id="zOut">&minus;</button>
+        <span class="z" id="zVal">100%</span>
+        <button class="btn sm" id="zIn">+</button>
+        <button class="btn sm" id="zFit">fit</button>
+        <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-dim)">
+          <input type="checkbox" id="showNames"> all names
+        </label>
+      </div>
+    </div>
+
+    <div class="pane" id="inspector">
+      <div id="inspGrip" title="Drag to resize"></div>
+      <div class="pane-head"><span id="inspTitle">Document</span></div>
+      <div class="pane-body" id="inspBody"></div>
+    </div>
+
+  </div>
+
+  <div id="warnbar">
+    <div class="wh">
+      <span>Checks</span>
+      <span class="badge" id="warnCount">0</span>
+      <span class="spacer" style="flex:1"></span>
+      <span id="fieldCount" class="badge">0 fields</span>
+    </div>
+    <div id="warnList"></div>
+  </div>
+
+</div>
+
+<input type="file" id="fileCsv" accept=".csv,text/csv" hidden>
+<input type="file" id="fileJson" accept=".json,application/json" hidden>
+
+<script>
+/* Adobe base-14 Helvetica width metrics (1/1000 em), WinAnsi code points.
+   Needed so the editor preview and the PDF writer measure text identically. */
+(function (global) {
+  'use strict';
+
+  function table(pairs) {
+    var w = new Array(256), i;
+    for (i = 0; i < 256; i++) w[i] = pairs.dflt;
+    Object.keys(pairs.map).forEach(function (code) { w[+code] = pairs.map[code]; });
+    return w;
+  }
+
+  // ASCII 32..126 in order.
+  var HELV_ASCII = [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,
+    556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,
+    1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,
+    667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,
+    333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,
+    556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
+
+  var BOLD_ASCII = [278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,
+    556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,
+    975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,
+    667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,
+    333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,
+    611,611,389,556,333,611,556,778,556,556,500,389,280,389,584];
+
+  // WinAnsi high range that actually shows up in Credible form text.
+  var HELV_HIGH = {128:556,130:222,131:556,132:333,133:1000,134:556,135:556,136:333,
+    137:1000,138:667,139:333,140:1000,142:611,145:222,146:222,147:333,148:333,
+    149:350,150:556,151:1000,152:333,153:1000,154:500,155:333,156:944,158:500,
+    159:667,160:278,161:333,162:556,163:556,164:556,165:556,166:260,167:556,
+    168:333,169:737,170:370,171:556,172:584,173:333,174:737,175:333,176:400,
+    177:584,178:333,179:333,180:333,181:556,182:537,183:278,184:333,185:333,
+    186:365,187:556,188:834,189:834,190:834,191:611};
+
+  var BOLD_HIGH = {128:556,130:278,131:556,132:500,133:1000,134:556,135:556,136:333,
+    137:1000,138:667,139:333,140:1000,142:611,145:278,146:278,147:500,148:500,
+    149:350,150:556,151:1000,152:333,153:1000,154:556,155:333,156:944,158:556,
+    159:667,160:278,161:333,162:556,163:556,164:556,165:556,166:280,167:556,
+    168:333,169:737,170:370,171:556,172:584,173:333,174:737,175:333,176:400,
+    177:584,178:333,179:333,180:333,181:611,182:556,183:278,184:333,185:333,
+    186:365,187:556,188:834,189:834,190:834,191:611};
+
+  function build(ascii, high, upperDefault) {
+    var map = {}, i;
+    for (i = 0; i < ascii.length; i++) map[32 + i] = ascii[i];
+    Object.keys(high).forEach(function (c) { map[c] = high[c]; });
+    // Latin-1 letters (192..255) track their unaccented counterparts closely enough.
+    for (i = 192; i < 256; i++) if (map[i] === undefined) map[i] = upperDefault[i < 223 ? 0 : 1];
+    return table({ dflt: 556, map: map });
+  }
+
+  var W = {
+    H:  build(HELV_ASCII, HELV_HIGH, [722, 556]),
+    HB: build(BOLD_ASCII, BOLD_HIGH, [722, 556]),
+  };
+  W.HO = W.H;   // oblique shares the roman widths
+  W.HBO = W.HB;
+
+  /* WinAnsi code for a JS character; returns -1 when unmappable. */
+  var UNI2WIN = {
+    0x20AC:128,0x201A:130,0x0192:131,0x201E:132,0x2026:133,0x2020:134,0x2021:135,
+    0x02C6:136,0x2030:137,0x0160:138,0x2039:139,0x0152:140,0x017D:142,0x2018:145,
+    0x2019:146,0x201C:147,0x201D:148,0x2022:149,0x2013:150,0x2014:151,0x02DC:152,
+    0x2122:153,0x0161:154,0x203A:155,0x0153:156,0x017E:158,0x0178:159,0x00A0:32
+  };
+
+  function winByte(ch) {
+    var c = ch.charCodeAt(0);
+    if (c < 256) return c;
+    if (UNI2WIN[c] !== undefined) return UNI2WIN[c];
+    return -1;
+  }
+
+  /* Convert a JS string to a WinAnsi byte string, replacing anything unmappable. */
+  function toWinAnsi(str) {
+    var out = '', i, b;
+    for (i = 0; i < str.length; i++) {
+      b = winByte(str[i]);
+      out += String.fromCharCode(b < 0 ? 63 /* ? */ : b);
+    }
+    return out;
+  }
+
+  /* Width of str at the given point size, in points. */
+  function widthOf(str, font, size) {
+    var w = W[font] || W.H, total = 0, i, b;
+    for (i = 0; i < str.length; i++) {
+      b = winByte(str[i]);
+      total += w[b < 0 ? 63 : b];
+    }
+    return total * size / 1000;
+  }
+
+  /* Greedy word wrap to maxWidth. Always returns at least one line. */
+  function wrap(str, font, size, maxWidth) {
+    var words = String(str == null ? '' : str).split(/\s+/).filter(Boolean);
+    if (!words.length) return [''];
+    var lines = [], cur = words[0], i, test;
+    for (i = 1; i < words.length; i++) {
+      test = cur + ' ' + words[i];
+      if (widthOf(test, font, size) <= maxWidth) cur = test;
+      else { lines.push(cur); cur = words[i]; }
+    }
+    lines.push(cur);
+    return lines;
+  }
+
+  global.Metrics = { widthOf: widthOf, wrap: wrap, toWinAnsi: toWinAnsi };
+})(window);
+
+</script>
+<script>
+/* RFC4180 CSV reader. Credible's export is mostly unquoted, but quoted fields
+   show up in other exports, so handle both. */
+(function (global) {
+  'use strict';
+
+  function parse(text) {
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    var rows = [], row = [], field = '', i = 0, inQuotes = false, c;
+
+    while (i < text.length) {
+      c = text[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
+          inQuotes = false; i++; continue;
+        }
+        field += c; i++; continue;
+      }
+      if (c === '"' && field === '') { inQuotes = true; i++; continue; }
+      if (c === ',') { row.push(field); field = ''; i++; continue; }
+      if (c === '\r') { i++; continue; }
+      if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
+      field += c; i++;
+    }
+    if (field !== '' || row.length) { row.push(field); rows.push(row); }
+    if (!rows.length) return { header: [], rows: [] };
+
+    var header = rows[0].map(function (h) { return h.trim(); });
+    var out = rows.slice(1).filter(function (r) {
+      return r.some(function (v) { return v !== ''; });
+    }).map(function (r) {
+      var o = {};
+      header.forEach(function (h, idx) { o[h] = r[idx] === undefined ? '' : r[idx]; });
+      return o;
+    });
+    return { header: header, rows: out };
+  }
+
+  function toCSV(header, rows) {
+    function esc(v) {
+      v = v == null ? '' : String(v);
+      return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+    }
+    return [header.map(esc).join(',')]
+      .concat(rows.map(function (r) { return r.map(esc).join(','); }))
+      .join('\r\n');
+  }
+
+  global.CSV = { parse: parse, toCSV: toCSV };
+})(window);
+
+</script>
+<script>
+/* Credible export rows -> form model -> editable document.
+
+   Two text values are kept for every question and answer:
+     origText  - exactly what Credible shows, used to find the item in the
+                 Export Builder and never edited here
+     text      - the display text for the PDF, freely editable
+
+   Field numbering is bound to the answer's Credible sort order (a_ord), never
+   to its position on the page. Reordering options for layout can therefore
+   never change which answer a field name refers to. */
+(function (global) {
+  'use strict';
+
+  var BANNER_COLORS = {
+    re: [0.961, 0.718, 0.694], or: [0.988, 0.831, 0.671], ye: [0.976, 0.906, 0.624],
+    gr: [0.784, 0.902, 0.788], bl: [0.788, 0.855, 0.973], in: [0.804, 0.816, 0.937],
+    vi: [0.882, 0.808, 0.918], bk: [0.85, 0.85, 0.85], gy: [0.898, 0.906, 0.910]
+  };
+
+  var ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+    rsquo: '’', lsquo: '‘', ldquo: '“', rdquo: '”',
+    ndash: '–', mdash: '—', hellip: '…', bull: '•' };
+
+  function decodeEntities(s) {
+    return s.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, function (m, e) {
+      if (e[0] === '#') {
+        var n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+        return isNaN(n) ? m : String.fromCharCode(n);
+      }
+      return ENTITIES[e.toLowerCase()] !== undefined ? ENTITIES[e.toLowerCase()] : m;
+    });
+  }
+
+  /* Flatten Credible's inline HTML to plain text. <br> becomes a space. */
+  function stripHtml(s) {
+    if (!s) return '';
+    return decodeEntities(
+      String(s)
+        .replace(/<\s*br\s*\/?\s*>/gi, ' ')
+        .replace(/<[^>]*>/g, '')
+    ).replace(/\s+/g, ' ').trim();
+  }
+
+  /* Credible's exporter drops commas from text and leaves the surrounding
+     spaces behind. Restore a comma wherever a doubled space sits between two
+     word characters. Reported as a suggestion, never applied silently. */
+  function repairCommas(s) {
+    return String(s || '').replace(/(\S)  +(\S)/g, '$1, $2');
+  }
+
+  function needsCommaRepair(s) { return /\S  +\S/.test(String(s || '')); }
+
+  /* A label wrapped in <span class='xx fullw'> is a section banner. */
+  function bannerOf(html) {
+    var m = /<span[^>]*class=['"]([^'"]*)['"]/i.exec(html || '');
+    if (!m) return null;
+    var classes = m[1].split(/\s+/);
+    var color = classes.filter(function (c) { return BANNER_COLORS[c]; })[0];
+    // Only a full-width span is a section banner; a bare colour span is
+    // inline emphasis inside an ordinary note.
+    if (!color || classes.indexOf('fullw') < 0) return null;
+    return { color: BANNER_COLORS[color], key: color };
+  }
+
+  function isStyleOnly(html) { return /<\s*style/i.test(html || ''); }
+
+  function truthy(v) { return String(v).toUpperCase() === 'TRUE' || v === '1'; }
+  function num(v, dflt) { var n = parseFloat(v); return isNaN(n) ? dflt : n; }
+
+  /* Build a form tree from export rows. */
+  function buildForm(rows) {
+    var byId = {}, order = [], meta = null;
+
+    rows.forEach(function (r) {
+      if (!meta && r.form_id) meta = { formId: r.form_id, formName: r.form_name, formVerId: r.form_ver_id };
+      if (!r.question_id) return;
+      var q = byId[r.question_id];
+      if (!q) {
+        q = byId[r.question_id] = {
+          qid: r.question_id,
+          ord: num(r.q_ord, 0),
+          format: (r.q_format || '').toUpperCase(),
+          origText: stripHtml(r.question_text),
+          rawHtml: r.question_text || '',
+          required: truthy(r.is_required),
+          labelX: num(r.label_x, 1),
+          controlX: num(r.control_x, 15),
+          fieldLen: num(r.field_len, 0),
+          maxLen: num(r.max_len, 0),
+          multiLine: num(r.multi_line, 0),
+          lineBreak: truthy(r.is_line_break),
+          bold: truthy(r.is_label_bold),
+          externalId: r.q_external_id || '',
+          clientField: r.client_field || '',
+          catName: r.cat_description || r.cat_name || '',
+          answers: [], answerIds: {}
+        };
+        order.push(q);
+      }
+      if (r.answer_id && !q.answerIds[r.answer_id]) {
+        q.answerIds[r.answer_id] = true;
+        q.answers.push({
+          aid: r.answer_id,
+          ord: num(r.a_ord, q.answers.length + 1),
+          origText: stripHtml(r.answer),
+          isNotes: truthy(r.is_notes),
+          externalId: r.a_external_id || ''
+        });
+      }
+    });
+
+    order.sort(function (a, b) { return a.ord - b.ord; });
+    order.forEach(function (q) {
+      q.answers.sort(function (a, b) { return a.ord - b.ord; });
+      delete q.answerIds;
+    });
+    return { meta: meta || { formId: '', formName: '' }, questions: order };
+  }
+
+  var STOP = { the: 1, a: 1, an: 1, of: 1, for: 1, to: 1, and: 1, or: 1, my: 1,
+    i: 1, in: 1, on: 1, at: 1, this: 1, that: 1, with: 1, these: 1, those: 1,
+    is: 1, are: 1, be: 1, it: 1, can: 1, will: 1, me: 1, ll: 1 };
+
+  /* Suggest a snake_case base name from label text. */
+  function suggestName(text, taken) {
+    var words = stripHtml(text).toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+      .filter(function (w) { return w && !STOP[w]; })
+      .slice(0, 3)
+      .map(function (w) { return w.length > 9 ? w.slice(0, 9) : w; });
+    var base = words.join('_') || 'field';
+    if (!/^[a-z]/.test(base)) base = 'f_' + base;
+    if (!taken) return base;
+    var name = base, n = 2;
+    while (taken[name]) { name = base + '_' + n; n++; }
+    return name;
+  }
+
+  function validName(n) { return /^[a-z][a-z0-9_]{0,58}$/.test(n || ''); }
+
+  /* Turn a form into an editable document seeded from Credible's own layout
+     hints. Everything here is subsequently editable in the UI. */
+  function buildDoc(form, style) {
+    var taken = {}, blocks = [];
+
+    form.questions.forEach(function (q) {
+      var banner = bannerOf(q.rawHtml);
+      var block = {
+        id: 'b' + q.qid,
+        qid: q.qid,
+        format: q.format,
+        include: true,
+        origText: q.origText,
+        label: q.origText,
+        hint: '',
+        spaceBefore: 0,
+        pageBreakBefore: false
+      };
+
+      if (q.format === 'LBL') {
+        if (isStyleOnly(q.rawHtml)) { block.include = false; block.kind = 'note'; block.excludedReason = 'style block'; }
+        else if (banner) { block.kind = 'heading'; block.color = banner.color; block.colorKey = banner.key; }
+        else { block.kind = 'note'; block.bold = q.bold; block.size = style.noteSize; }
+        block.kind = block.kind || 'note';
+      } else if (q.format === 'CB' || q.format === 'RB') {
+        block.kind = 'checks';
+        block.exclusive = q.format === 'RB';
+        block.columns = 2;
+        block.name = '';
+        block.options = q.answers.map(function (a) {
+          return { aid: a.aid, index: a.ord, origText: a.origText, text: a.origText, include: true, isNotes: a.isNotes };
+        });
+      } else if (q.format === 'TXT') {
+        block.kind = 'text';
+        block.name = '';
+        block.multiline = q.multiLine >= 2;
+        block.maxLen = q.maxLen && q.maxLen <= 500 ? Math.min(q.maxLen, 500) : style.fieldMaxLen;
+        block.labelInline = !q.lineBreak;
+        block.height = block.multiline ? style.fieldH * 2 : style.fieldH;
+      } else {
+        block.kind = 'note';
+        block.include = false;
+        block.excludedReason = 'unsupported format ' + (q.format || '(blank)');
+      }
+
+      if (block.kind === 'checks' || block.kind === 'text') {
+        block.name = suggestName(q.origText, taken);
+        taken[block.name] = true;
+      }
+      blocks.push(block);
+    });
+
+    return {
+      version: 1,
+      source: {
+        formId: form.meta.formId,
+        formName: form.meta.formName,
+        formVerId: form.meta.formVerId,
+        importedAt: new Date().toISOString()
+      },
+      header: { title: form.meta.formName.replace(/^[*\s]+/, ''), note: '', intro: '' },
+      style: style,
+      blocks: blocks
+    };
+  }
+
+  /* Re-import: carry names, edited text and layout across to a new export.
+     Matching is by question_id / answer_id. Blocks the user added by hand have
+     no question_id, so they are remembered by the item they follow and spliced
+     back into the same place. */
+  function mergeDoc(oldDoc, newDoc) {
+    var oldBlocks = {}, report = { kept: 0, custom: 0, addedQuestions: [], removedQuestions: [], addedAnswers: [], removedAnswers: [] };
+    oldDoc.blocks.forEach(function (b) { if (b.qid) oldBlocks[b.qid] = b; });
+
+    var customs = [], anchor = null;
+    oldDoc.blocks.forEach(function (b) {
+      if (b.qid) anchor = b.qid;
+      else { customs.push({ block: b, after: anchor }); report.custom++; }
+    });
+
+    var merged = newDoc.blocks.map(function (nb) {
+      var ob = oldBlocks[nb.qid];
+      if (!ob) { report.addedQuestions.push(nb.origText); return nb; }
+      delete oldBlocks[nb.qid];
+      report.kept++;
+      var out = JSON.parse(JSON.stringify(nb));
+      ['include', 'label', 'hint', 'name', 'columns', 'spaceBefore', 'pageBreakBefore',
+       'multiline', 'maxLen', 'labelInline', 'height', 'size', 'bold', 'color', 'colorKey'
+      ].forEach(function (k) { if (ob[k] !== undefined) out[k] = ob[k]; });
+
+      if (out.options && ob.options) {
+        var oldOpts = {}, seq = [];
+        ob.options.forEach(function (o) { oldOpts[o.aid] = o; });
+        out.options.forEach(function (o) {
+          var prev = oldOpts[o.aid];
+          if (prev) { o.text = prev.text; o.include = prev.include; delete oldOpts[o.aid]; }
+          else { o.isNew = true; report.addedAnswers.push({ block: out.label, text: o.origText, index: o.index }); }
+        });
+        Object.keys(oldOpts).forEach(function (aid) {
+          report.removedAnswers.push({ block: out.label, text: oldOpts[aid].origText, index: oldOpts[aid].index });
+        });
+        // preserve the old display order for answers that still exist
+        var pos = {};
+        ob.options.forEach(function (o, i) { pos[o.aid] = i; });
+        out.options.sort(function (a, b) {
+          var pa = pos[a.aid], pb = pos[b.aid];
+          if (pa === undefined && pb === undefined) return a.index - b.index;
+          if (pa === undefined) return 1;
+          if (pb === undefined) return -1;
+          return pa - pb;
+        });
+        void seq;
+      }
+      return out;
+    });
+
+    // keep the old block order for questions that survived
+    var newPos = {};
+    oldDoc.blocks.forEach(function (b, i) { newPos[b.qid] = i; });
+    merged.sort(function (a, b) {
+      var pa = newPos[a.qid], pb = newPos[b.qid];
+      if (pa === undefined && pb === undefined) return 0;
+      if (pa === undefined) return 1;
+      if (pb === undefined) return -1;
+      return pa - pb;
+    });
+
+    Object.keys(oldBlocks).forEach(function (qid) {
+      report.removedQuestions.push(oldBlocks[qid].label || oldBlocks[qid].origText);
+    });
+
+    customs.forEach(function (c) {
+      var at = c.after === null ? 0 : merged.findIndex(function (b) { return b.qid === c.after; }) + 1;
+      merged.splice(at > 0 ? at : merged.length, 0, c.block);
+    });
+
+    newDoc.blocks = merged;
+    newDoc.header = oldDoc.header;
+    newDoc.style = oldDoc.style;
+    return { doc: newDoc, report: report };
+  }
+
+  /* A heading, note or gap the user adds by hand. It carries no question_id,
+     which is what marks it as theirs on re-import. */
+  var customSeq = 0;
+  function newBlock(kind, style) {
+    customSeq++;
+    var b = {
+      id: 'c' + Date.now().toString(36) + '_' + customSeq,
+      qid: null, format: 'CUSTOM', kind: kind, include: true,
+      origText: '', label: '', hint: '', spaceBefore: 0, pageBreakBefore: false
+    };
+    if (kind === 'heading') { b.label = 'New section'; b.colorKey = 'gy'; b.color = BANNER_COLORS.gy; }
+    if (kind === 'note') { b.label = 'New text'; b.size = style ? style.noteSize : 7; }
+    if (kind === 'spacer') { b.height = 10; }
+    return b;
+  }
+
+  global.Model = {
+    buildForm: buildForm, buildDoc: buildDoc, mergeDoc: mergeDoc, newBlock: newBlock,
+    stripHtml: stripHtml, repairCommas: repairCommas, needsCommaRepair: needsCommaRepair,
+    suggestName: suggestName, validName: validName, BANNER_COLORS: BANNER_COLORS
+  };
+})(window);
+
+</script>
+<script>
+/* Flow layout engine.
+
+   Produces page-by-page draw operations and field definitions in PDF user
+   space (origin bottom-left, points). The on-screen preview and the PDF
+   writer both consume this output, so what the editor shows is what the PDF
+   contains - there is no second layout pass to drift out of sync. */
+(function (global) {
+  'use strict';
+
+  var M = global.Metrics;
+
+  var DEFAULT_STYLE = {
+    pageW: 612, pageH: 792,
+    marginTop: 39, marginRight: 26, marginBottom: 26, marginLeft: 26,
+    titleSize: 15, subSize: 7.5, introSize: 6.8,
+    bannerSize: 9, bannerH: 13,
+    qSize: 8.2, optSize: 7.6, hintSize: 7, noteSize: 7,
+    pitch: 11.4, boxSize: 9, labelDX: 13, gap: 6,
+    fieldH: 11, fieldMaxLen: 100, fieldPad: 3,
+    blockGap: 5, colGutter: 10,
+    fieldBg: [0.8, 0.843, 1], ruleColor: [0.667, 0.718, 0.722],
+    hintColor: [0.439, 0.482, 0.486], introColor: [0.565, 0.58, 0.592],
+    titleColor: [0.29, 0.137, 0.353], bannerText: [0.106, 0.149, 0.192],
+    textColor: [0, 0, 0]
+  };
+
+  function lineH(size) { return size * 1.2; }
+
+  function fieldNameFor(block, opt) {
+    if (!block.name) return '';
+    if (block.kind === 'checks') return block.name + '_' + opt.index;
+    return block.name;
+  }
+
+  function columnGeometry(st, cols) {
+    var contentW = st.pageW - st.marginLeft - st.marginRight;
+    var colW = (contentW - st.colGutter * (cols - 1)) / cols;
+    var xs = [], i;
+    for (i = 0; i < cols; i++) xs.push(st.marginLeft + i * (colW + st.colGutter));
+    return { contentW: contentW, colW: colW, xs: xs };
+  }
+
+  /* --- per-block measurement + emission -------------------------------- */
+
+  function measureBlock(block, st) {
+    var contentW = st.pageW - st.marginLeft - st.marginRight, h = 0;
+
+    if (block.kind === 'heading') return st.bannerH + st.blockGap;
+
+    if (block.kind === 'spacer') return (block.height || 8);
+
+    if (block.kind === 'note') {
+      var size = block.size || st.noteSize;
+      return M.wrap(block.label, block.italic ? 'HO' : (block.bold ? 'HB' : 'H'), size, contentW).length
+        * lineH(size) + st.blockGap;
+    }
+
+    if (block.kind === 'text') {
+      var fh = block.multiline ? (block.height || st.fieldH * 2) : st.fieldH;
+      if (block.labelInline) h = Math.max(fh, lineH(st.qSize));
+      else h = lineH(st.qSize) + fh;
+      return h + st.blockGap;
+    }
+
+    // checks
+    var geo = columnGeometry(st, block.columns || 1);
+    var opts = block.options.filter(function (o) { return o.include; });
+    var rows = Math.ceil(opts.length / (block.columns || 1)) || 0;
+    h = lineH(st.qSize);
+    var rowGap = st.pitch - lineH(st.optSize);
+    for (var r = 0; r < rows; r++) {
+      var maxLines = 1;
+      for (var c = 0; c < (block.columns || 1); c++) {
+        var o = opts[c * rows + r];
+        if (!o) continue;
+        maxLines = Math.max(maxLines, M.wrap(o.text, 'H', st.optSize, geo.colW - st.labelDX).length);
+      }
+      h += maxLines * lineH(st.optSize) + rowGap;
+    }
+    return h + st.blockGap;
+  }
+
+  function emitBlock(block, st, top, page) {
+    var ops = page.ops, fields = page.fields;
+    var contentW = st.pageW - st.marginLeft - st.marginRight;
+    var right = st.pageW - st.marginRight;
+    var y = top;
+
+    if (block.kind === 'heading') {
+      ops.push({ t: 'rect', x: st.marginLeft, y: y - st.bannerH, w: contentW, h: st.bannerH,
+                 fill: block.color || DEFAULT_STYLE.fieldBg });
+      ops.push({ t: 'text', x: st.marginLeft + 4, y: y - st.bannerH + 3.6, size: st.bannerSize,
+                 font: 'HB', color: st.bannerText, str: block.label });
+      return;
+    }
+
+    if (block.kind === 'spacer') return;
+
+    if (block.kind === 'note') {
+      var size = block.size || st.noteSize;
+      var font = block.italic ? 'HO' : (block.bold ? 'HB' : 'H');
+      M.wrap(block.label, font, size, contentW).forEach(function (ln, i) {
+        ops.push({ t: 'text', x: st.marginLeft, y: y - lineH(size) * (i + 1) + size * 0.25,
+                   size: size, font: font, color: block.color || st.textColor, str: ln });
+      });
+      return;
+    }
+
+    if (block.kind === 'text') {
+      var fh = block.multiline ? (block.height || st.fieldH * 2) : st.fieldH;
+      var labelBase, fx, fw, fyBottom;
+
+      if (block.labelInline) {
+        labelBase = y - lineH(st.qSize) + st.qSize * 0.25;
+        var lw = block.label ? M.widthOf(block.label, 'HB', st.qSize) : 0;
+        if (block.label) {
+          ops.push({ t: 'text', x: st.marginLeft, y: labelBase, size: st.qSize, font: 'HB',
+                     color: st.textColor, str: block.label });
+        }
+        fx = st.marginLeft + (block.label ? lw + st.gap : 0);
+        if (block.hint) {
+          var hw = M.widthOf(block.hint, 'HO', st.hintSize);
+          ops.push({ t: 'text', x: fx, y: labelBase, size: st.hintSize, font: 'HO',
+                     color: st.hintColor, str: block.hint });
+          fx += hw + st.gap;
+        }
+        fw = right - fx;
+        fyBottom = labelBase - st.fieldPad;
+      } else {
+        labelBase = y - lineH(st.qSize) + st.qSize * 0.25;
+        if (block.label) {
+          ops.push({ t: 'text', x: st.marginLeft, y: labelBase, size: st.qSize, font: 'HB',
+                     color: st.textColor, str: block.label });
+        }
+        if (block.hint) {
+          ops.push({ t: 'text', x: st.marginLeft + M.widthOf(block.label, 'HB', st.qSize) + st.gap,
+                     y: labelBase, size: st.hintSize, font: 'HO', color: st.hintColor, str: block.hint });
+        }
+        fx = st.marginLeft;
+        fw = contentW;
+        fyBottom = y - lineH(st.qSize) - fh + st.fieldPad;
+      }
+
+      ops.push({ t: 'line', x1: fx, y1: fyBottom - 0.5, x2: right, y2: fyBottom - 0.5,
+                 w: 0.5, color: st.ruleColor });
+      fields.push({
+        kind: 'text', name: block.name, x: fx, y: fyBottom, w: Math.max(fw, 20), h: fh,
+        maxLen: block.multiline ? 0 : (block.maxLen || st.fieldMaxLen),
+        multiline: !!block.multiline, size: 8, bg: st.fieldBg,
+        ref: { qid: block.qid, blockId: block.id }
+      });
+      return;
+    }
+
+    // checks
+    var cols = block.columns || 1;
+    var geo = columnGeometry(st, cols);
+    var opts = block.options.filter(function (o) { return o.include; });
+    var rows = Math.ceil(opts.length / cols) || 0;
+    var qBase = y - lineH(st.qSize) + st.qSize * 0.25;
+    if (block.label) {
+      ops.push({ t: 'text', x: st.marginLeft, y: qBase, size: st.qSize, font: 'HB',
+                 color: st.textColor, str: block.label });
+    }
+    if (block.hint) {
+      ops.push({ t: 'text', x: st.marginLeft + M.widthOf(block.label, 'HB', st.qSize) + st.gap,
+                 y: qBase, size: st.hintSize, font: 'HO', color: st.hintColor, str: block.hint });
+    }
+
+    var rowTop = y - lineH(st.qSize);
+    var rowGap = st.pitch - lineH(st.optSize);
+    for (var r = 0; r < rows; r++) {
+      var maxLines = 1;
+      for (var c = 0; c < cols; c++) {
+        var o = opts[c * rows + r];
+        if (!o) continue;
+        var lines = M.wrap(o.text, 'H', st.optSize, geo.colW - st.labelDX);
+        maxLines = Math.max(maxLines, lines.length);
+        var base = rowTop - lineH(st.optSize) + st.optSize * 0.25;
+        lines.forEach(function (ln, li) {
+          ops.push({ t: 'text', x: geo.xs[c] + st.labelDX, y: base - li * lineH(st.optSize),
+                     size: st.optSize, font: 'H', color: st.textColor, str: ln });
+        });
+        fields.push({
+          kind: 'check', name: fieldNameFor(block, o), x: geo.xs[c], y: base - 1,
+          w: st.boxSize, h: st.boxSize, exclusive: !!block.exclusive,
+          // where the editor can park the name tag without covering the answer
+          tagDX: st.labelDX + M.widthOf(lines[0], 'H', st.optSize) + 4,
+          ref: { qid: block.qid, aid: o.aid, index: o.index, blockId: block.id }
+        });
+      }
+      rowTop -= maxLines * lineH(st.optSize) + rowGap;
+    }
+  }
+
+  /* --- document ---------------------------------------------------------- */
+
+  function layout(doc) {
+    var st = Object.assign({}, DEFAULT_STYLE, doc.style || {});
+    var pages = [], warnings = [], seen = {};
+
+    function newPage() {
+      var p = { ops: [], fields: [] };
+      pages.push(p);
+      return p;
+    }
+
+    var page = newPage();
+    var y = st.pageH - st.marginTop;
+    var boxes = [];
+
+    // page-1 masthead
+    var h = doc.header || {};
+    if (h.title) {
+      y -= st.titleSize;
+      page.ops.push({ t: 'text', x: st.marginLeft, y: y, size: st.titleSize, font: 'HB',
+                      color: st.titleColor, str: h.title });
+      if (h.note) {
+        var nw = M.widthOf(h.note, 'HB', st.subSize);
+        page.ops.push({ t: 'text', x: st.pageW - st.marginRight - nw, y: y + 2, size: st.subSize,
+                        font: 'HB', color: st.hintColor, str: h.note });
+      }
+      y -= 4;
+    }
+    if (h.intro) {
+      M.wrap(h.intro, 'HO', st.introSize, st.pageW - st.marginLeft - st.marginRight)
+        .forEach(function (ln) {
+          y -= lineH(st.introSize);
+          page.ops.push({ t: 'text', x: st.marginLeft, y: y, size: st.introSize, font: 'HO',
+                          color: st.introColor, str: ln });
+        });
+      y -= 3;
+    }
+
+    doc.blocks.forEach(function (block) {
+      if (!block.include) return;
+      if (block.kind === 'checks' && !block.options.some(function (o) { return o.include; })) return;
+
+      var bh = measureBlock(block, st);
+      y -= (block.spaceBefore || 0);
+
+      if (block.pageBreakBefore && page.ops.length) { page = newPage(); y = st.pageH - st.marginTop; }
+      if (y - bh < st.marginBottom) { page = newPage(); y = st.pageH - st.marginTop; }
+
+      emitBlock(block, st, y, page);
+      boxes.push({ blockId: block.id, page: pages.length - 1, top: y, height: bh - st.blockGap });
+      y -= bh;
+    });
+
+    // field-name validation across the whole document
+    pages.forEach(function (p, pi) {
+      p.fields.forEach(function (f) {
+        f.page = pi;
+        if (!f.name) { warnings.push({ level: 'error', msg: 'Unnamed field', ref: f.ref }); return; }
+        if (!global.Model.validName(f.name)) {
+          warnings.push({ level: 'error', msg: 'Invalid field name "' + f.name + '" (use lowercase letters, digits, underscore)', ref: f.ref });
+        }
+        if (seen[f.name]) warnings.push({ level: 'error', msg: 'Duplicate field name "' + f.name + '"', ref: f.ref });
+        seen[f.name] = true;
+      });
+    });
+
+    doc.blocks.forEach(function (b) {
+      if (b.include && b.kind === 'checks') {
+        var dropped = b.options.filter(function (o) { return !o.include; });
+        if (dropped.length) {
+          warnings.push({ level: 'info', ref: { blockId: b.id },
+            msg: '"' + b.label + '" hides ' + dropped.length + ' answer(s); numbers ' +
+                 dropped.map(function (o) { return b.name + '_' + o.index; }).join(', ') +
+                 ' stay reserved so the rest keep their Credible positions.' });
+        }
+        var isNew = b.options.filter(function (o) { return o.isNew; });
+        if (isNew.length) {
+          warnings.push({ level: 'warn', ref: { blockId: b.id },
+            msg: '"' + b.label + '" has ' + isNew.length + ' answer(s) added since the saved layout.' });
+        }
+      }
+    });
+
+    return { pages: pages, warnings: warnings, style: st, boxes: boxes };
+  }
+
+  global.Layout = { layout: layout, DEFAULT_STYLE: DEFAULT_STYLE, fieldNameFor: fieldNameFor, columnGeometry: columnGeometry };
+})(window);
+
+</script>
+<script>
+/* Minimal PDF writer with AcroForm support.
+
+   Deliberately dependency-free: the whole tool has to run from a file:// URL
+   with no install step, and the output only needs base-14 fonts, checkbox and
+   text widgets. Object layout mirrors the reference template so Credible sees
+   the same structure it already accepts. */
+(function (global) {
+  'use strict';
+
+  var M = global.Metrics;
+
+  function esc(s) {
+    return M.toWinAnsi(String(s)).replace(/([\\()])/g, '\\$1')
+      .replace(/[\x00-\x1f]/g, function (c) { return '\\' + ('00' + c.charCodeAt(0).toString(8)).slice(-3); });
+  }
+  function n(v) {
+    var r = Math.round(v * 1000) / 1000;
+    return String(r);
+  }
+  function rgb(c) { return n(c[0]) + ' ' + n(c[1]) + ' ' + n(c[2]); }
+
+  function Writer() {
+    this.objects = [null];  // 1-indexed
+  }
+  Writer.prototype.alloc = function () { this.objects.push(''); return this.objects.length - 1; };
+  Writer.prototype.set = function (id, body) { this.objects[id] = body; return id; };
+  Writer.prototype.add = function (body) { var id = this.alloc(); return this.set(id, body); };
+  Writer.prototype.stream = function (dict, data) {
+    return this.add(dict.replace(/>>\s*$/, '/Length ' + data.length + ' >>') +
+      '\nstream\n' + data + '\nendstream');
+  };
+  Writer.prototype.build = function () {
+    var out = '%PDF-1.4\n%\xe2\xe3\xcf\xd3\n', offsets = [0], i;
+    for (i = 1; i < this.objects.length; i++) {
+      offsets[i] = out.length;
+      out += i + ' 0 obj\n' + this.objects[i] + '\nendobj\n';
+    }
+    var xref = out.length;
+    out += 'xref\n0 ' + this.objects.length + '\n0000000000 65535 f \n';
+    for (i = 1; i < this.objects.length; i++) {
+      out += ('0000000000' + offsets[i]).slice(-10) + ' 00000 n \n';
+    }
+    out += 'trailer\n<< /Size ' + this.objects.length + ' /Root 1 0 R /Info ' +
+      this.infoId + ' 0 R >>\nstartxref\n' + xref + '\n%%EOF\n';
+
+    var bytes = new Uint8Array(out.length);
+    for (i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i) & 0xff;
+    return bytes;
+  };
+
+  function contentFor(ops) {
+    var parts = [], font = null, size = null, color = null;
+    ops.forEach(function (op) {
+      if (op.t === 'rect') {
+        parts.push('q ' + rgb(op.fill) + ' rg ' + n(op.x) + ' ' + n(op.y) + ' ' +
+          n(op.w) + ' ' + n(op.h) + ' re f Q');
+        color = null;
+      } else if (op.t === 'line') {
+        parts.push('q ' + rgb(op.color) + ' RG ' + n(op.w) + ' w ' + n(op.x1) + ' ' + n(op.y1) +
+          ' m ' + n(op.x2) + ' ' + n(op.y2) + ' l S Q');
+      } else if (op.t === 'text') {
+        if (!op.str) return;
+        var fk = { H: '/F1', HB: '/F2', HO: '/F3' }[op.font] || '/F1';
+        var head = '';
+        if (fk !== font || op.size !== size) { head += fk + ' ' + n(op.size) + ' Tf '; font = fk; size = op.size; }
+        var col = rgb(op.color || [0, 0, 0]);
+        if (col !== color) { head += col + ' rg '; color = col; }
+        parts.push('BT ' + head + '1 0 0 1 ' + n(op.x) + ' ' + n(op.y) + ' Tm (' + esc(op.str) + ') Tj ET');
+      }
+    });
+    return parts.join('\n');
+  }
+
+  /* pages: [{ops, fields}] from Layout.layout() */
+  function build(pages, opts) {
+    opts = opts || {};
+    var st = opts.style || global.Layout.DEFAULT_STYLE;
+    var w = new Writer();
+
+    var catalogId = w.alloc();        // 1
+    var pagesId = w.alloc();          // 2
+    var f1 = w.add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+    var f2 = w.add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+    var f3 = w.add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>');
+    var fz = w.add('<< /Type /Font /Subtype /Type1 /BaseFont /ZapfDingbats >>');
+
+    var box = st.boxSize;
+    var apRes = '/Resources << /ProcSet [ /PDF /Text ] /Font << /ZaDb ' + fz + ' 0 R >> >>';
+    var apOff = w.stream('<< /Type /XObject /Subtype /Form /BBox [ 0 0 ' + n(box) + ' ' + n(box) + ' ] ' + apRes + ' >>',
+      'q 1 1 1 rg 0 0 ' + n(box) + ' ' + n(box) + ' re f 0 0 0 RG .6 w .3 .3 ' + n(box - 0.6) + ' ' + n(box - 0.6) + ' re S Q');
+    var apYes = w.stream('<< /Type /XObject /Subtype /Form /BBox [ 0 0 ' + n(box) + ' ' + n(box) + ' ] ' + apRes + ' >>',
+      'q 1 1 1 rg 0 0 ' + n(box) + ' ' + n(box) + ' re f 0 0 0 RG .6 w .3 .3 ' + n(box - 0.6) + ' ' + n(box - 0.6) +
+      ' re S Q\nq BT /ZaDb ' + n(box - 1.5) + ' Tf 0 g ' + n(box * 0.14) + ' ' + n(box * 0.18) + ' Td (4) Tj ET Q');
+
+    var pageIds = pages.map(function () { return w.alloc(); });
+    var fieldIds = [];
+
+    pages.forEach(function (p, pi) {
+      var content = w.stream('<< >>', contentFor(p.ops));
+      var annots = [];
+
+      p.fields.forEach(function (f) {
+        var id = w.alloc();
+        annots.push(id + ' 0 R');
+        fieldIds.push(id);
+        var rect = '[ ' + n(f.x) + ' ' + n(f.y) + ' ' + n(f.x + f.w) + ' ' + n(f.y + f.h) + ' ]';
+        if (f.kind === 'check') {
+          w.set(id, '<< /Type /Annot /Subtype /Widget /FT /Btn /T (' + esc(f.name) + ')' +
+            ' /F 4 /Ff 0 /V /Off /AS /Off /H /N /P ' + pageIds[pi] + ' 0 R /Rect ' + rect +
+            ' /BS << /S /S /W .6 >> /MK << /BC [ 0 0 0 ] /BG [ 1 1 1 ] /CA (4) >>' +
+            ' /AP << /N << /Off ' + apOff + ' 0 R /Yes ' + apYes + ' 0 R >> >> >>');
+        } else {
+          var size = f.size || 8;
+          var da = '/Helv ' + n(size) + ' Tf .1 .1 .1 rg';
+          var body = '/Tx BMC q 1 1 ' + n(f.w - 2) + ' ' + n(f.h - 2) + ' re W n ' +
+            (f.bg ? rgb(f.bg) + ' rg 0 0 ' + n(f.w) + ' ' + n(f.h) + ' re f ' : '') + 'Q EMC';
+          var ap = w.stream('<< /Type /XObject /Subtype /Form /BBox [ 0 0 ' + n(f.w) + ' ' + n(f.h) +
+            ' ] /Resources << /ProcSet [ /PDF /Text ] /Font << /Helv ' + f1 + ' 0 R >> >> >>', body);
+          w.set(id, '<< /Type /Annot /Subtype /Widget /FT /Tx /T (' + esc(f.name) + ')' +
+            ' /F 4 /Ff ' + (f.multiline ? 4096 : 0) + ' /V () /DV () /DA (' + da + ')' +
+            (f.maxLen ? ' /MaxLen ' + f.maxLen : '') +
+            (f.bg ? ' /MK << /BG [ ' + rgb(f.bg) + ' ] >>' : '') +
+            ' /P ' + pageIds[pi] + ' 0 R /Rect ' + rect + ' /AP << /N ' + ap + ' 0 R >> >>');
+        }
+      });
+
+      w.set(pageIds[pi], '<< /Type /Page /Parent ' + pagesId + ' 0 R /MediaBox [ 0 0 ' +
+        n(st.pageW) + ' ' + n(st.pageH) + ' ] /Resources << /ProcSet [ /PDF /Text ] /Font << /F1 ' +
+        f1 + ' 0 R /F2 ' + f2 + ' 0 R /F3 ' + f3 + ' 0 R >> >> /Contents ' + content + ' 0 R' +
+        (annots.length ? ' /Annots [ ' + annots.join(' ') + ' ]' : '') + ' >>');
+    });
+
+    var acro = w.add('<< /Fields [ ' + fieldIds.map(function (i) { return i + ' 0 R'; }).join(' ') + ' ]' +
+      ' /DR << /Font << /Helv ' + f1 + ' 0 R /HeBo ' + f2 + ' 0 R /ZaDb ' + fz + ' 0 R >> >>' +
+      ' /DA (/Helv 0 Tf 0 g) /NeedAppearances true >>');
+
+    w.set(pagesId, '<< /Type /Pages /Count ' + pageIds.length + ' /Kids [ ' +
+      pageIds.map(function (i) { return i + ' 0 R'; }).join(' ') + ' ] >>');
+    w.set(catalogId, '<< /Type /Catalog /Pages ' + pagesId + ' 0 R /AcroForm ' + acro +
+      ' 0 R /PageMode /UseNone >>');
+
+    w.infoId = w.add('<< /Title (' + esc(opts.title || '') + ') /Producer (PDF Template Maker) >>');
+    return w.build();
+  }
+
+  global.PDFWriter = { build: build };
+})(window);
+
+</script>
+<script>
+/* PDF Template Maker — editor shell. */
+(function () {
+  'use strict';
+
+  var LS_KEY = 'ptm.doc.v1';
+  var state = { doc: null, res: null, sel: null, scale: 1, showNames: false };
+
+  /* ---------- tiny DOM helper ---------- */
+  function h(tag, attrs, kids) {
+    var parts = tag.split('.'), el = document.createElement(parts[0]);
+    if (parts.length > 1) el.className = parts.slice(1).join(' ');
+    Object.keys(attrs || {}).forEach(function (k) {
+      var v = attrs[k];
+      if (v === null || v === undefined || v === false) return;
+      if (k.slice(0, 2) === 'on') el.addEventListener(k.slice(2).toLowerCase(), v);
+      else if (k === 'class') el.className += (el.className ? ' ' : '') + v;
+      else if (k === 'text') el.textContent = v;
+      else if (k === 'html') el.innerHTML = v;
+      else if (k === 'value') el.value = v;
+      else if (k === 'checked') el.checked = !!v;
+      else if (k === 'data') Object.keys(v).forEach(function (d) { el.dataset[d] = v[d]; });
+      else el.setAttribute(k, v);
+    });
+    (kids || []).forEach(function (c) { if (c) el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return el;
+  }
+  function $(id) { return document.getElementById(id); }
+  function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); }
+  function css(c) { return 'rgb(' + c.map(function (v) { return Math.round(v * 255); }).join(',') + ')'; }
+
+  function block(id) {
+    return state.doc.blocks.filter(function (b) { return b.id === id; })[0];
+  }
+
+  /* ---------- document lifecycle ---------- */
+
+  function loadCSV(text, filename) {
+    var parsed = window.CSV.parse(text);
+    if (parsed.header.indexOf('question_id') < 0) {
+      alert('That file does not look like a Credible form export — no question_id column.');
+      return;
+    }
+    var form = window.Model.buildForm(parsed.rows);
+    var fresh = window.Model.buildDoc(form, Object.assign({}, window.Layout.DEFAULT_STYLE));
+    fresh.source.file = filename;
+
+    if (state.doc && state.doc.source.formId === fresh.source.formId) {
+      var merged = window.Model.mergeDoc(state.doc, fresh);
+      state.doc = merged.doc;
+      reportMerge(merged.report);
+    } else {
+      state.doc = fresh;
+      state.doc.header.intro = '';
+    }
+    state.sel = null;
+    render();
+    fit();
+  }
+
+  function reportMerge(r) {
+    var lines = ['Re-imported over the existing layout.',
+      r.kept + ' question(s) matched — names, wording and arrangement kept.'];
+    if (r.addedQuestions.length) lines.push('\nNew questions (' + r.addedQuestions.length + '):\n· ' + r.addedQuestions.slice(0, 12).join('\n· '));
+    if (r.removedQuestions.length) lines.push('\nGone from the export (' + r.removedQuestions.length + '):\n· ' + r.removedQuestions.slice(0, 12).join('\n· '));
+    if (r.addedAnswers.length) lines.push('\nNew answers (' + r.addedAnswers.length + '):\n· ' +
+      r.addedAnswers.slice(0, 12).map(function (a) { return a.text + '  → position ' + a.index; }).join('\n· '));
+    if (r.removedAnswers.length) lines.push('\nAnswers no longer in the export (' + r.removedAnswers.length + '):\n· ' +
+      r.removedAnswers.slice(0, 12).map(function (a) { return a.text + '  (was ' + a.index + ')'; }).join('\n· '));
+    alert(lines.join('\n'));
+  }
+
+  function save() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(state.doc)); } catch (e) { /* private mode */ }
+  }
+  function restore() {
+    try {
+      var raw = localStorage.getItem(LS_KEY);
+      if (raw) { state.doc = JSON.parse(raw); return true; }
+    } catch (e) { /* ignore */ }
+    return false;
+  }
+
+  function download(name, data, mime) {
+    var blob = new Blob([data], { type: mime });
+    var a = h('a', { href: URL.createObjectURL(blob), download: name });
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+
+  function slug(s) {
+    return String(s || 'form').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'form';
+  }
+
+  /* ---------- render ---------- */
+
+  function render() {
+    if (!state.doc) { renderEmpty(); return; }
+    state.res = window.Layout.layout(state.doc);
+    renderOutline();
+    renderPages();
+    renderInspector();
+    renderWarnings();
+    ['btnSaveLayout', 'btnNames', 'btnPdf'].forEach(function (id) { $(id).disabled = false; });
+    $('formName').innerHTML = '<b>' + escapeHtml(state.doc.source.formName || '(untitled)') + '</b> · form ' +
+      escapeHtml(state.doc.source.formId || '?') +
+      (state.doc.source.formVerId ? ' · ver ' + escapeHtml(state.doc.source.formVerId) : '');
+    save();
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  function renderEmpty() {
+    clear($('pages'));
+    $('pages').appendChild(h('div.empty', {}, [
+      h('b', { text: 'Import a Credible form export to begin' }),
+      document.createTextNode('Export Builder → CSV, one row per question and answer. '),
+      h('br'),
+      document.createTextNode('Drop the file anywhere on this window.')
+    ]));
+  }
+
+  /* --- outline --- */
+  function renderOutline() {
+    var list = $('blockList');
+    clear(list);
+    state.doc.blocks.forEach(function (b) {
+      var nameEl = null;
+      if (b.kind === 'checks' || b.kind === 'text') {
+        var bad = b.include && !window.Model.validName(b.name);
+        nameEl = h('span.fname' + (bad ? '.bad' : ''), { text: b.name ? (b.kind === 'checks' ? b.name + '_n' : b.name) : '(unnamed)' });
+      }
+      var row = h('div.blk' + (state.sel === b.id ? '.sel' : '') + (b.include ? '' : '.off') +
+                  (b.qid ? '' : '.custom'), {
+        draggable: 'true', data: { id: b.id },
+        onclick: function (e) { if (e.target.type !== 'checkbox') select(b.id); }
+      }, [
+        h('span.grip', { text: '⠿' }),
+        h('input', {
+          type: 'checkbox', class: 'inc', checked: b.include,
+          onchange: function (e) { b.include = e.target.checked; render(); }
+        }),
+        h('div', {}, [
+          h('div.lbl', { text: b.label || b.origText || '(empty)' }),
+          h('div.meta', {}, [
+            h('span.kind.' + b.kind, { text: b.kind === 'note' ? 'text' : b.kind }),
+            b.qid ? null : h('span.count', { text: 'added' }),
+            b.options ? h('span.count', { text: b.options.filter(function (o) { return o.include; }).length + '/' + b.options.length }) : null,
+            nameEl,
+            b.excludedReason ? h('span.flag', { text: b.excludedReason }) : null,
+            (b.options || []).some(function (o) { return o.isNew; }) ? h('span.flag', { text: 'new answers' }) : null
+          ])
+        ])
+      ]);
+      wireDrag(row, list, function (fromId, toId, after) { moveBlock(fromId, toId, after); });
+      list.appendChild(row);
+    });
+  }
+
+  function wireDrag(row, container, onDrop) {
+    row.addEventListener('dragstart', function (e) {
+      e.dataTransfer.setData('text/plain', row.dataset.id);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    row.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      row.classList.add('dragover');
+    });
+    row.addEventListener('dragleave', function () { row.classList.remove('dragover'); });
+    row.addEventListener('drop', function (e) {
+      e.preventDefault();
+      row.classList.remove('dragover');
+      var from = e.dataTransfer.getData('text/plain');
+      if (from && from !== row.dataset.id) onDrop(from, row.dataset.id, e.offsetY > row.offsetHeight / 2);
+    });
+    void container;
+  }
+
+  function moveBlock(fromId, toId, after) {
+    var bs = state.doc.blocks;
+    var fi = bs.findIndex(function (b) { return b.id === fromId; });
+    var item = bs.splice(fi, 1)[0];
+    var ti = bs.findIndex(function (b) { return b.id === toId; });
+    bs.splice(ti + (after ? 1 : 0), 0, item);
+    render();
+  }
+
+  function select(id) {
+    state.sel = id;
+    renderOutline();
+    renderInspector();
+    markSelection();
+    var box = (state.res.boxes || []).filter(function (b) { return b.blockId === id; })[0];
+    if (box) {
+      var sheet = $('pages').children[box.page];
+      if (sheet && sheet.scrollIntoView) {
+        var top = sheet.offsetTop + (state.res.style.pageH - box.top) * state.scale - 120;
+        $('pages').scrollTo({ top: top, behavior: 'smooth' });
+      }
+    }
+  }
+
+  function markSelection() { renderPages(); }
+
+  /* --- preview --- */
+  function fontCss(f, size) {
+    var stack = ' Helvetica, Arial, "Liberation Sans", sans-serif';
+    if (f === 'HB') return '600 ' + size + 'px' + stack;
+    if (f === 'HO') return 'italic ' + size + 'px' + stack;
+    return size + 'px' + stack;
+  }
+
+  function renderPages() {
+    var host = $('pages'), st = state.res.style, sc = state.scale;
+    clear(host);
+    state.res.pages.forEach(function (page, pi) {
+      var sheet = h('div.sheet' + (state.showNames ? '.shownames' : ''), {
+        style: 'width:' + st.pageW * sc + 'px;height:' + st.pageH * sc + 'px'
+      });
+      sheet.appendChild(h('div.pageno', { text: 'PAGE ' + (pi + 1) + ' / ' + state.res.pages.length }));
+
+      var cv = h('canvas');
+      sheet.appendChild(cv);
+      drawPage(cv, page, st, sc);
+
+      (state.res.boxes || []).filter(function (b) { return b.page === pi; }).forEach(function (b) {
+        sheet.appendChild(h('div.hit' + (state.sel === b.blockId ? '.sel' : ''), {
+          data: { id: b.blockId },
+          style: 'left:' + st.marginLeft * sc + 'px;top:' + (st.pageH - b.top) * sc + 'px;width:' +
+            (st.pageW - st.marginLeft - st.marginRight) * sc + 'px;height:' + Math.max(b.height, 6) * sc + 'px',
+          onclick: function () { select(b.blockId); }
+        }));
+      });
+
+      page.fields.forEach(function (f) {
+        var isSel = state.sel && f.ref.blockId === state.sel;
+        sheet.appendChild(h('div.fld' + (f.kind === 'check' ? '.check' : '.textf') + (isSel ? '.sel' : ''), {
+          style: 'left:' + f.x * sc + 'px;top:' + (st.pageH - f.y - f.h) * sc + 'px;width:' +
+            f.w * sc + 'px;height:' + f.h * sc + 'px'
+        }, [h('span.tag', {
+          text: f.name || '⚠ unnamed',
+          style: f.tagDX ? 'left:' + f.tagDX * sc + 'px;bottom:auto;top:0;margin:0' : null
+        })]));
+      });
+
+      host.appendChild(sheet);
+    });
+  }
+
+  function drawPage(cv, page, st, sc) {
+    var dpr = window.devicePixelRatio || 1;
+    cv.width = Math.round(st.pageW * sc * dpr);
+    cv.height = Math.round(st.pageH * sc * dpr);
+    cv.style.width = (st.pageW * sc) + 'px';
+    cv.style.height = (st.pageH * sc) + 'px';
+    var g = cv.getContext('2d');
+    g.setTransform(sc * dpr, 0, 0, sc * dpr, 0, 0);
+    g.fillStyle = '#fbfaf7';
+    g.fillRect(0, 0, st.pageW, st.pageH);
+    g.textBaseline = 'alphabetic';
+    page.ops.forEach(function (op) {
+      if (op.t === 'rect') {
+        g.fillStyle = css(op.fill);
+        g.fillRect(op.x, st.pageH - op.y - op.h, op.w, op.h);
+      } else if (op.t === 'line') {
+        g.strokeStyle = css(op.color); g.lineWidth = op.w;
+        g.beginPath();
+        g.moveTo(op.x1, st.pageH - op.y1); g.lineTo(op.x2, st.pageH - op.y2);
+        g.stroke();
+      } else if (op.t === 'text') {
+        g.fillStyle = css(op.color || [0, 0, 0]);
+        g.font = fontCss(op.font, op.size);
+        g.fillText(op.str, op.x, st.pageH - op.y);
+      }
+    });
+    // field wells, drawn under the HTML overlays so they read as part of the page
+    page.fields.filter(function (f) { return f.kind === 'text'; }).forEach(function (f) {
+      g.fillStyle = 'rgba(204,215,255,.55)';
+      g.fillRect(f.x, st.pageH - f.y - f.h, f.w, f.h);
+    });
+  }
+
+  /* --- warnings --- */
+  function renderWarnings() {
+    var list = $('warnList');
+    clear(list);
+    var ws = state.res.warnings;
+    var errs = ws.filter(function (w) { return w.level === 'error'; }).length;
+    $('warnCount').textContent = ws.length;
+    $('warnCount').className = 'badge' + (errs ? ' err' : '');
+    var nFields = state.res.pages.reduce(function (a, p) { return a + p.fields.length; }, 0);
+    $('fieldCount').textContent = nFields + ' fields · ' + state.res.pages.length + ' pages';
+
+    if (!ws.length) {
+      list.appendChild(h('div.warn.info', {}, [h('span.lv', { text: 'ok' }),
+        document.createTextNode('Every included field has a unique, valid name.')]));
+      return;
+    }
+    ws.slice(0, 60).forEach(function (w) {
+      list.appendChild(h('div.warn.' + w.level, {
+        onclick: function () { if (w.ref && w.ref.blockId) select(w.ref.blockId); }
+      }, [h('span.lv', { text: w.level }), document.createTextNode(w.msg)]));
+    });
+  }
+
+  /* ---------- inspector ---------- */
+
+  function field(labelText, input, hintText) {
+    return h('div.row.stack', {}, [h('label', { text: labelText }), input,
+      hintText ? h('div.hintline', { text: hintText }) : null]);
+  }
+  function inline(labelText, input) {
+    return h('div.row', {}, [h('label', { text: labelText }), input]);
+  }
+  function textInput(value, onInput, cls) {
+    return h('input', { type: 'text', class: cls || '', value: value == null ? '' : value,
+      oninput: function (e) { onInput(e.target.value); } });
+  }
+  function numInput(value, onInput, step) {
+    return h('input', { type: 'number', step: step || 1, value: value,
+      oninput: function (e) { onInput(parseFloat(e.target.value)); } });
+  }
+
+  /* Wording box: drag the bottom-right corner to see a long label in full.
+     It starts tall enough for the text it holds, and newlines collapse to
+     spaces because a PDF label is a single line of text. */
+  function wordingBox(value, onInput) {
+    var ta = h('textarea', { class: 'wording', value: value == null ? '' : value,
+      oninput: function (e) {
+        if (e.target.value.indexOf('\n') >= 0) e.target.value = e.target.value.replace(/\s*\n\s*/g, ' ');
+        onInput(e.target.value);
+      } });
+    requestAnimationFrame(function () {
+      if (!ta.style.height) ta.style.height = Math.min(ta.scrollHeight + 2, 260) + 'px';
+    });
+    return ta;
+  }
+  function check(labelText, value, onChange) {
+    return h('label', { style: 'display:flex;gap:7px;align-items:center;font-size:11.5px;color:var(--text-dim);margin-bottom:7px' }, [
+      h('input', { type: 'checkbox', checked: value, onchange: function (e) { onChange(e.target.checked); } }),
+      document.createTextNode(labelText)
+    ]);
+  }
+  function pills(options, current, onPick) {
+    return h('div.pill-row', {}, options.map(function (o) {
+      return h('div.pill' + (o.value === current ? '.on' : ''), {
+        text: o.label, onclick: function () { onPick(o.value); }
+      });
+    }));
+  }
+
+  function renderInspector() {
+    var body = $('inspBody');
+    clear(body);
+    var b = state.sel ? block(state.sel) : null;
+    $('inspTitle').textContent = b ? (b.kind + ' — ' + (b.label || '').slice(0, 26)) : 'Document';
+    if (!b) { renderDocSettings(body); return; }
+
+    // shared
+    var sec = h('div.sec', {}, [h('h3', { text: 'Item' })]);
+    sec.appendChild(check('Include in the PDF', b.include, function (v) { b.include = v; render(); }));
+    sec.appendChild(check('Start a new page here', b.pageBreakBefore, function (v) { b.pageBreakBefore = v; render(); }));
+    sec.appendChild(inline('Space above', numInput(b.spaceBefore || 0, function (v) { b.spaceBefore = v || 0; refresh(); }, 1)));
+    body.appendChild(sec);
+
+    if (b.kind === 'checks' || b.kind === 'text') body.appendChild(nameSection(b));
+    else body.appendChild(kindSection(b));
+    if (b.kind !== 'spacer') body.appendChild(labelSection(b));
+    if (b.kind === 'spacer') body.appendChild(spacerSection(b));
+    if (b.kind === 'checks') body.appendChild(optionSection(b));
+    if (b.kind === 'text') body.appendChild(textFieldSection(b));
+    if (b.kind === 'heading') body.appendChild(colorSection(b));
+    if (b.kind === 'note') body.appendChild(noteSection(b));
+    body.appendChild(originSection(b));
+  }
+
+  /* Labels carry no answers, so they are free to be a banner, plain text or a
+     gap — and so is anything added by hand. */
+  function kindSection(b) {
+    var kids = [
+      h('h3', { text: 'Shown as' }),
+      pills([{ label: 'Heading', value: 'heading' }, { label: 'Text', value: 'note' },
+             { label: 'Gap', value: 'spacer' }], b.kind, function (v) {
+        b.kind = v;
+        if (v === 'heading' && !b.colorKey) { b.colorKey = 'gy'; b.color = window.Model.BANNER_COLORS.gy; }
+        if (v === 'spacer' && !b.height) b.height = 10;
+        render();
+      }),
+      h('div.hintline', { text: b.kind === 'heading'
+        ? 'A full-width coloured band across the page.'
+        : b.kind === 'spacer' ? 'Blank vertical space.' : 'A line of plain text.' })
+    ];
+    if (!b.qid) {
+      kids.push(h('button.btn.sm', {
+        style: 'margin-top:10px', text: 'Delete this item',
+        onclick: function () {
+          state.doc.blocks = state.doc.blocks.filter(function (x) { return x.id !== b.id; });
+          state.sel = null;
+          render();
+        }
+      }));
+    }
+    return h('div.sec', {}, kids);
+  }
+
+  function spacerSection(b) {
+    return h('div.sec', {}, [
+      h('h3', { text: 'Gap' }),
+      inline('Height (pt)', numInput(b.height || 10, function (v) { b.height = v || 10; refresh(); }, 1))
+    ]);
+  }
+
+  function nameSection(b) {
+    var bad = !window.Model.validName(b.name);
+    var inp = textInput(b.name, function (v) {
+      b.name = v.trim();
+      inp.classList.toggle('bad', !window.Model.validName(b.name));
+      refresh();
+    }, 'mono' + (bad ? ' bad' : ''));
+    var preview = b.kind === 'checks'
+      ? b.options.filter(function (o) { return o.include; })
+          .slice(0, 3).map(function (o) { return b.name + '_' + o.index; }).join(', ') +
+          (b.options.filter(function (o) { return o.include; }).length > 3 ? ', …' : '')
+      : b.name;
+    return h('div.sec', {}, [
+      h('h3', { text: 'Field name' }),
+      inp,
+      h('div.hintline', { text: b.kind === 'checks'
+        ? 'One field per answer: ' + (preview || '—')
+        : 'Single text field: ' + (preview || '—') }),
+      h('div.hintline', { text: 'Lowercase letters, digits and underscore. Type this same name into the Credible exporter as the rename.' })
+    ]);
+  }
+
+  function labelSection(b) {
+    var kids = [h('h3', { text: 'Wording on the page' }),
+      field('Label', wordingBox(b.label, function (v) { b.label = v; refresh(); }))];
+    if (b.kind === 'checks' || b.kind === 'text') {
+      kids.push(field('Hint (small grey italic, after the label)',
+        wordingBox(b.hint, function (v) { b.hint = v; refresh(); })));
+    }
+    if (window.Model.needsCommaRepair(b.label)) {
+      kids.push(h('button.btn.sm', { text: 'Restore stripped commas', onclick: function () {
+        b.label = window.Model.repairCommas(b.label); render();
+      } }));
+    }
+    if (b.qid && b.label !== b.origText) {
+      kids.push(h('button.btn.sm.ghost', { style: 'margin-top:6px', text: 'Reset to Credible wording',
+        onclick: function () { b.label = b.origText; render(); } }));
+    }
+    return h('div.sec', {}, kids);
+  }
+
+  function optionSection(b) {
+    var wrap = h('div.sec', {}, [
+      h('h3', { text: 'Answers · ' + b.options.length }),
+      inline('Columns', pills([{ label: '1', value: 1 }, { label: '2', value: 2 }, { label: '3', value: 3 }],
+        b.columns || 1, function (v) { b.columns = v; render(); })),
+      check('Only one may be picked (Credible radio)', b.exclusive, function (v) { b.exclusive = v; render(); })
+    ]);
+    var list = h('div', { style: 'margin-top:8px' });
+    b.options.forEach(function (o) {
+      var row = h('div.opt' + (o.include ? '' : '.off') + (o.isNew ? '.isnew' : ''), {
+        draggable: 'true', data: { id: String(o.aid) }
+      }, [
+        h('span.grip', { text: '⠿' }),
+        h('span.idx', { text: String(o.index), title: 'Credible answer position — the number in ' + b.name + '_' + o.index }),
+        h('input', { type: 'checkbox', checked: o.include,
+          onchange: function (e) { o.include = e.target.checked; render(); } }),
+        h('input', { type: 'text', value: o.text, title: o.text,
+          oninput: function (e) { o.text = e.target.value; refresh(); } })
+      ]);
+      wireOptionDrag(row, b);
+      list.appendChild(row);
+    });
+    wrap.appendChild(list);
+    wrap.appendChild(h('div.opt-hint', {
+      text: 'The number is the answer\'s position in the Credible export and never changes when you drag rows or hide answers — so a name can never end up on the wrong answer.'
+    }));
+    if (b.options.some(function (o) { return window.Model.needsCommaRepair(o.text); })) {
+      wrap.appendChild(h('button.btn.sm', { style: 'margin-top:8px', text: 'Restore stripped commas in answers',
+        onclick: function () {
+          b.options.forEach(function (o) { o.text = window.Model.repairCommas(o.text); });
+          render();
+        } }));
+    }
+    return wrap;
+  }
+
+  function wireOptionDrag(row, b) {
+    row.addEventListener('dragstart', function (e) { e.dataTransfer.setData('text/plain', row.dataset.id); });
+    row.addEventListener('dragover', function (e) { e.preventDefault(); row.classList.add('dragover'); });
+    row.addEventListener('dragleave', function () { row.classList.remove('dragover'); });
+    row.addEventListener('drop', function (e) {
+      e.preventDefault(); row.classList.remove('dragover');
+      var from = e.dataTransfer.getData('text/plain');
+      if (!from || from === row.dataset.id) return;
+      var fi = b.options.findIndex(function (o) { return String(o.aid) === from; });
+      var item = b.options.splice(fi, 1)[0];
+      var ti = b.options.findIndex(function (o) { return String(o.aid) === row.dataset.id; });
+      b.options.splice(ti + (e.offsetY > row.offsetHeight / 2 ? 1 : 0), 0, item);
+      render();
+    });
+  }
+
+  function textFieldSection(b) {
+    return h('div.sec', {}, [
+      h('h3', { text: 'Text field' }),
+      check('Field sits on the same line as the label', b.labelInline, function (v) { b.labelInline = v; render(); }),
+      check('Multi-line box', b.multiline, function (v) {
+        b.multiline = v;
+        if (v && !b.height) b.height = 22;
+        render();
+      }),
+      b.multiline ? inline('Height (pt)', numInput(b.height || 22, function (v) { b.height = v || 22; refresh(); }, 1)) : null,
+      !b.multiline ? inline('Max chars', numInput(b.maxLen || 0, function (v) { b.maxLen = v || 0; refresh(); }, 10)) : null
+    ]);
+  }
+
+  function colorSection(b) {
+    var pal = window.Model.BANNER_COLORS;
+    return h('div.sec', {}, [
+      h('h3', { text: 'Banner colour' }),
+      h('div.swatches', {}, Object.keys(pal).map(function (k) {
+        return h('div.sw' + (b.colorKey === k ? '.on' : ''), {
+          title: k, style: 'background:' + css(pal[k]),
+          onclick: function () { b.colorKey = k; b.color = pal[k]; render(); }
+        });
+      }))
+    ]);
+  }
+
+  function noteSection(b) {
+    return h('div.sec', {}, [
+      h('h3', { text: 'Note style' }),
+      inline('Size (pt)', numInput(b.size || state.res.style.noteSize, function (v) { b.size = v || 7; refresh(); }, 0.2)),
+      check('Bold', b.bold, function (v) { b.bold = v; render(); }),
+      check('Italic', b.italic, function (v) { b.italic = v; render(); })
+    ]);
+  }
+
+  function originSection(b) {
+    if (!b.qid) {
+      return h('div.sec', {}, [
+        h('h3', { text: 'Added by hand' }),
+        h('div.hintline', { text: 'This item is not from the Credible export. It stays put when you re-import an updated export.' })
+      ]);
+    }
+    var kids = [h('h3', { text: 'In Credible' }),
+      h('div.hintline', { text: 'Question: ' + (b.origText || '—') })];
+    if (b.options) {
+      kids.push(h('div.hintline', { text: b.options.length + ' answers, positions ' +
+        b.options.map(function (o) { return o.index; }).sort(function (x, y) { return x - y; }).join(', ') }));
+    }
+    kids.push(h('div.hintline', { text: 'question_id ' + b.qid + ' · format ' + b.format }));
+    return h('div.sec', {}, kids);
+  }
+
+  function renderDocSettings(body) {
+    var d = state.doc, st = d.style;
+    body.appendChild(h('div.sec', {}, [
+      h('h3', { text: 'Masthead' }),
+      field('Title', wordingBox(d.header.title, function (v) { d.header.title = v; refresh(); })),
+      field('Top-right note', wordingBox(d.header.note, function (v) { d.header.note = v; refresh(); })),
+      field('Intro line', wordingBox(d.header.intro, function (v) { d.header.intro = v; refresh(); }))
+    ]));
+
+    body.appendChild(h('div.sec', {}, [
+      h('h3', { text: 'Page' }),
+      inline('Width (pt)', numInput(st.pageW, function (v) { st.pageW = v; refresh(); }, 1)),
+      inline('Height (pt)', numInput(st.pageH, function (v) { st.pageH = v; refresh(); }, 1)),
+      inline('Margin top', numInput(st.marginTop, function (v) { st.marginTop = v; refresh(); }, 1)),
+      inline('Margin left', numInput(st.marginLeft, function (v) { st.marginLeft = v; refresh(); }, 1)),
+      inline('Margin right', numInput(st.marginRight, function (v) { st.marginRight = v; refresh(); }, 1)),
+      inline('Margin bottom', numInput(st.marginBottom, function (v) { st.marginBottom = v; refresh(); }, 1)),
+      h('div.hintline', { text: 'Letter is 612 × 792 pt. A4 is 595 × 842.' })
+    ]));
+
+    body.appendChild(h('div.sec', {}, [
+      h('h3', { text: 'Type & spacing' }),
+      inline('Question', numInput(st.qSize, function (v) { st.qSize = v; refresh(); }, 0.1)),
+      inline('Answer', numInput(st.optSize, function (v) { st.optSize = v; refresh(); }, 0.1)),
+      inline('Hint', numInput(st.hintSize, function (v) { st.hintSize = v; refresh(); }, 0.1)),
+      inline('Banner', numInput(st.bannerSize, function (v) { st.bannerSize = v; refresh(); }, 0.1)),
+      inline('Row pitch', numInput(st.pitch, function (v) { st.pitch = v; refresh(); }, 0.1)),
+      inline('Gap between items', numInput(st.blockGap, function (v) { st.blockGap = v; refresh(); }, 0.5)),
+      inline('Checkbox size', numInput(st.boxSize, function (v) { st.boxSize = v; refresh(); }, 0.5)),
+      inline('Field height', numInput(st.fieldH, function (v) { st.fieldH = v; refresh(); }, 0.5)),
+      inline('Default max chars', numInput(st.fieldMaxLen, function (v) { st.fieldMaxLen = v; refresh(); }, 10))
+    ]));
+
+    body.appendChild(h('div.sec', {}, [
+      h('h3', { text: 'Source' }),
+      h('div.hintline', { text: (d.source.file || 'imported export') + ' · form ' + d.source.formId +
+        (d.source.formVerId ? ' · version ' + d.source.formVerId : '') }),
+      h('div.hintline', { text: 'Imported ' + (d.source.importedAt || '').replace('T', ' ').slice(0, 16) }),
+      h('button.btn.sm', { style: 'margin-top:8px', text: 'Suggest names for unnamed items', onclick: autoName })
+    ]));
+  }
+
+  /* Redraw everything the edit affects while leaving the inspector alone.
+     Rebuilding it under a focused input would steal the caret on every
+     keystroke, so any handler attached to a text or number field uses this. */
+  /* New items land after whatever is selected, which is where the eye is. */
+  function addBlock(kind) {
+    var b = window.Model.newBlock(kind, state.doc.style);
+    var at = state.sel ? state.doc.blocks.findIndex(function (x) { return x.id === state.sel; }) + 1
+                       : state.doc.blocks.length;
+    state.doc.blocks.splice(at, 0, b);
+    state.sel = b.id;
+    render();
+    var ta = document.querySelector('#inspBody textarea.wording');
+    if (ta) { ta.focus(); ta.select(); }
+  }
+
+  function showAddMenu(anchor) {
+    var open = document.querySelector('.addmenu');
+    if (open) { open.remove(); return; }
+    var r = anchor.getBoundingClientRect();
+    var menu = h('div.addmenu', { style: 'left:' + r.left + 'px;top:' + (r.bottom + 4) + 'px' }, [
+      h('div', { onclick: function () { addBlock('heading'); menu.remove(); } },
+        [document.createTextNode('Heading'), h('span', { text: 'coloured band across the page' })]),
+      h('div', { onclick: function () { addBlock('note'); menu.remove(); } },
+        [document.createTextNode('Text'), h('span', { text: 'a line of your own wording' })]),
+      h('div', { onclick: function () { addBlock('spacer'); menu.remove(); } },
+        [document.createTextNode('Gap'), h('span', { text: 'blank vertical space' })])
+    ]);
+    document.body.appendChild(menu);
+    setTimeout(function () {
+      document.addEventListener('click', function close(e) {
+        if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', close); }
+      });
+    }, 0);
+  }
+
+  var refreshPending = false;
+  function refresh() {
+    if (refreshPending) return;
+    refreshPending = true;
+    requestAnimationFrame(function () {
+      refreshPending = false;
+      if (!state.doc) return;
+      state.res = window.Layout.layout(state.doc);
+      renderPages(); renderWarnings(); renderOutline(); save();
+    });
+  }
+  var scheduleRender = refresh;
+
+  function autoName() {
+    var taken = {};
+    state.doc.blocks.forEach(function (b) { if (b.name) taken[b.name] = true; });
+    state.doc.blocks.forEach(function (b) {
+      if ((b.kind === 'checks' || b.kind === 'text') && !b.name) {
+        b.name = window.Model.suggestName(b.label || b.origText, taken);
+        taken[b.name] = true;
+      }
+    });
+    render();
+  }
+
+  /* ---------- exports ---------- */
+
+  function exportPDF() {
+    var errs = state.res.warnings.filter(function (w) { return w.level === 'error'; });
+    if (errs.length && !confirm(errs.length + ' naming problem(s) still open:\n\n· ' +
+        errs.slice(0, 6).map(function (w) { return w.msg; }).join('\n· ') +
+        '\n\nExport anyway?')) return;
+    var bytes = window.PDFWriter.build(state.res.pages, {
+      style: state.res.style, title: state.doc.header.title || state.doc.source.formName
+    });
+    download(slug(state.doc.header.title || state.doc.source.formName) + '.pdf', bytes, 'application/pdf');
+  }
+
+  /* One row per PDF field, carrying the untouched Credible wording so each
+     name can be matched to the right item in the Export Builder. */
+  function nameRows() {
+    var rows = [];
+    state.doc.blocks.forEach(function (b) {
+      if (!b.include || (b.kind !== 'checks' && b.kind !== 'text')) return;
+      var pageOf = {};
+      state.res.pages.forEach(function (p, pi) {
+        p.fields.forEach(function (f) { if (f.ref.blockId === b.id) pageOf[f.name] = pi + 1; });
+      });
+      if (b.kind === 'text') {
+        rows.push({ name: b.name, question: b.origText, answer: '', index: '', type: 'text',
+          page: pageOf[b.name] || '', qid: b.qid, aid: '' });
+      } else {
+        b.options.filter(function (o) { return o.include; }).forEach(function (o) {
+          var nm = b.name + '_' + o.index;
+          rows.push({ name: nm, question: b.origText, answer: o.origText, index: o.index,
+            type: b.exclusive ? 'radio' : 'checkbox', page: pageOf[nm] || '', qid: b.qid, aid: o.aid });
+        });
+      }
+    });
+    return rows;
+  }
+
+  function exportNames() {
+    var rows = nameRows();
+    var header = ['pdf_field_name', 'credible_question_text', 'credible_answer_text',
+      'answer_position', 'field_type', 'pdf_page', 'question_id', 'answer_id'];
+    var csv = window.CSV.toCSV(header, rows.map(function (r) {
+      return [r.name, r.question, r.answer, r.index, r.type, r.page, r.qid, r.aid];
+    }));
+    download(slug(state.doc.header.title || state.doc.source.formName) + '_field_names.csv', csv, 'text/csv');
+  }
+
+  function showNames() {
+    var rows = nameRows();
+    var lastQ = null;
+    var tbody = h('tbody', {});
+    rows.forEach(function (r) {
+      if (r.question !== lastQ) {
+        lastQ = r.question;
+        tbody.appendChild(h('tr.grp', {}, [h('td', { colspan: 4, text: r.question })]));
+      }
+      tbody.appendChild(h('tr', {}, [
+        h('td.n', { text: r.name }),
+        h('td', { text: r.answer || '—' }),
+        h('td', { text: String(r.index || '') }),
+        h('td', { text: r.type + (r.page ? ' · p' + r.page : '') })
+      ]));
+    });
+    var table = h('table.names', {}, [
+      h('thead', {}, [h('tr', {}, [
+        h('th', { text: 'Rename to (type this in Credible)' }),
+        h('th', { text: 'Credible answer' }),
+        h('th', { text: 'Pos' }),
+        h('th', { text: 'Type' })
+      ])]),
+      tbody
+    ]);
+
+    var bg = h('div.modal-bg', { onclick: function (e) { if (e.target === bg) bg.remove(); } }, [
+      h('div.modal', {}, [
+        h('div.mh', {}, [
+          h('h2', { text: 'Field names for the Credible exporter' }),
+          h('span', { style: 'flex:1' }),
+          h('span.badge', { text: rows.length + ' fields' })
+        ]),
+        h('div.mb', {}, [
+          h('div.hintline', { style: 'margin-bottom:10px',
+            text: 'Select each question below in the Export Builder and rename its output to the name in the first column. Grouped rows are one question; the position column is the answer\'s order in the export.' }),
+          table
+        ]),
+        h('div.mf', {}, [
+          h('button.btn', { text: 'Copy as TSV', onclick: function () {
+            var tsv = rows.map(function (r) {
+              return [r.name, r.question, r.answer, r.index, r.type].join('\t');
+            }).join('\n');
+            navigator.clipboard.writeText(tsv).then(function () { alert('Copied ' + rows.length + ' rows.'); },
+              function () { alert('Clipboard blocked — use Download CSV instead.'); });
+          } }),
+          h('button.btn', { text: 'Download CSV', onclick: exportNames }),
+          h('button.btn.primary', { text: 'Close', onclick: function () { bg.remove(); } })
+        ])
+      ])
+    ]);
+    document.body.appendChild(bg);
+  }
+
+  /* ---------- zoom ---------- */
+  function setScale(s) {
+    state.scale = Math.max(0.35, Math.min(2.4, s));
+    $('zVal').textContent = Math.round(state.scale * 100) + '%';
+    if (state.res) renderPages();
+  }
+  function fit() {
+    if (!state.res) return;
+    var avail = $('canvasPane').clientWidth - 60;
+    setScale(avail / state.res.style.pageW);
+  }
+
+  /* ---------- wiring ---------- */
+  function readFile(file, cb) {
+    var fr = new FileReader();
+    fr.onload = function () { cb(String(fr.result), file.name); };
+    fr.readAsText(file);
+  }
+
+  function handleFile(file) {
+    if (/\.json$/i.test(file.name)) {
+      readFile(file, function (text) {
+        try {
+          var d = JSON.parse(text);
+          if (!d.blocks) throw new Error('not a layout');
+          state.doc = d;
+          state.doc.style = Object.assign({}, window.Layout.DEFAULT_STYLE, d.style || {});
+          state.sel = null;
+          render(); fit();
+        } catch (e) { alert('Could not read that layout file: ' + e.message); }
+      });
+    } else {
+      readFile(file, loadCSV);
+    }
+  }
+
+  function init() {
+    $('btnImport').onclick = function () { $('fileCsv').click(); };
+    $('btnLoadLayout').onclick = function () { $('fileJson').click(); };
+    $('fileCsv').onchange = function (e) { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ''; };
+    $('fileJson').onchange = function (e) { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ''; };
+    $('btnPdf').onclick = exportPDF;
+    $('btnNames').onclick = showNames;
+    $('btnSaveLayout').onclick = function () {
+      download(slug(state.doc.header.title || state.doc.source.formName) + '_layout.json',
+        JSON.stringify(state.doc, null, 2), 'application/json');
+    };
+    $('btnAllOn').onclick = function () {
+      state.doc.blocks.forEach(function (b) { if (!b.excludedReason) b.include = true; });
+      render();
+    };
+    $('btnAllOff').onclick = function () {
+      state.doc.blocks.forEach(function (b) { b.include = false; });
+      render();
+    };
+    $('btnRepair').onclick = function () {
+      var n = 0;
+      state.doc.blocks.forEach(function (b) {
+        if (window.Model.needsCommaRepair(b.label)) { b.label = window.Model.repairCommas(b.label); n++; }
+        if (window.Model.needsCommaRepair(b.hint)) { b.hint = window.Model.repairCommas(b.hint); n++; }
+        (b.options || []).forEach(function (o) {
+          if (window.Model.needsCommaRepair(o.text)) { o.text = window.Model.repairCommas(o.text); n++; }
+        });
+      });
+      render();
+      alert(n ? 'Restored commas in ' + n + ' item(s). Check the wording — the export drops commas, so this is a best guess.'
+              : 'Nothing looked like a stripped comma.');
+    };
+    $('btnAdd').onclick = function (e) { e.stopPropagation(); showAddMenu(e.currentTarget); };
+
+    var savedW = null;
+    try { savedW = localStorage.getItem('ptm.inspW'); } catch (e) { /* private mode */ }
+    if (savedW) document.documentElement.style.setProperty('--insp-w', savedW + 'px');
+    var grip = $('inspGrip');
+    grip.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      grip.setPointerCapture(e.pointerId);
+      document.body.classList.add('resizing');
+      function move(ev) {
+        var w = Math.max(280, Math.min(760, window.innerWidth - ev.clientX));
+        document.documentElement.style.setProperty('--insp-w', w + 'px');
+      }
+      function up() {
+        grip.removeEventListener('pointermove', move);
+        grip.removeEventListener('pointerup', up);
+        document.body.classList.remove('resizing');
+        var w = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--insp-w'), 10);
+        try { localStorage.setItem('ptm.inspW', w); } catch (err) { /* private mode */ }
+      }
+      grip.addEventListener('pointermove', move);
+      grip.addEventListener('pointerup', up);
+    });
+
+    $('zIn').onclick = function () { setScale(state.scale * 1.15); };
+    $('zOut').onclick = function () { setScale(state.scale / 1.15); };
+    $('zFit').onclick = fit;
+    $('showNames').onchange = function (e) { state.showNames = e.target.checked; renderPages(); };
+
+    var dz = null;
+    window.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      if (!dz) { dz = h('div.dropzone', { text: 'drop export or layout' }); document.body.appendChild(dz); }
+    });
+    window.addEventListener('dragleave', function (e) {
+      if (e.relatedTarget === null && dz) { dz.remove(); dz = null; }
+    });
+    window.addEventListener('drop', function (e) {
+      e.preventDefault();
+      if (dz) { dz.remove(); dz = null; }
+      if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+    });
+
+    window.addEventListener('resize', function () { if (state.res) renderPages(); });
+
+    // ?load=<path-to-export.csv> imports on open, handy for a bookmarked template
+    var auto = /[?&]load=([^&]+)/.exec(location.search);
+    if (auto) {
+      fetch(decodeURIComponent(auto[1]))
+        .then(function (r) { return r.text(); })
+        .then(function (t) { loadCSV(t, decodeURIComponent(auto[1])); })
+        .catch(function (e) { console.warn('auto-load failed', e); renderEmpty(); });
+      return;
+    }
+    if (restore()) { render(); fit(); } else { renderEmpty(); }
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+
+</script>
