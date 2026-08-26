@@ -34,7 +34,7 @@
 
   /* ---------- document lifecycle ---------- */
 
-  function loadCSV(text, filename) {
+  function loadCSV(text, filename, encoding) {
     var parsed = window.CSV.parse(text);
     if (parsed.header.indexOf('question_id') < 0) {
       alert('That file does not look like a Credible form export — no question_id column.');
@@ -43,6 +43,7 @@
     var form = window.Model.buildForm(parsed.rows);
     var fresh = window.Model.buildDoc(form, Object.assign({}, window.Layout.DEFAULT_STYLE));
     fresh.source.file = filename;
+    fresh.source.encoding = encoding || 'UTF-8';
 
     if (state.doc && state.doc.source.formId === fresh.source.formId) {
       var merged = window.Model.mergeDoc(state.doc, fresh);
@@ -172,9 +173,11 @@
     row.addEventListener('dragleave', function () { row.classList.remove('dragover'); });
     row.addEventListener('drop', function (e) {
       e.preventDefault();
+      e.stopPropagation();
       row.classList.remove('dragover');
       var from = e.dataTransfer.getData('text/plain');
-      if (from && from !== row.dataset.id) onDrop(from, row.dataset.id, e.offsetY > row.offsetHeight / 2);
+      var r = row.getBoundingClientRect();
+      if (from && from !== row.dataset.id) onDrop(from, row.dataset.id, e.clientY > r.top + r.height / 2);
     });
     void container;
   }
@@ -495,13 +498,14 @@
     row.addEventListener('dragover', function (e) { e.preventDefault(); row.classList.add('dragover'); });
     row.addEventListener('dragleave', function () { row.classList.remove('dragover'); });
     row.addEventListener('drop', function (e) {
-      e.preventDefault(); row.classList.remove('dragover');
+      e.preventDefault(); e.stopPropagation(); row.classList.remove('dragover');
       var from = e.dataTransfer.getData('text/plain');
       if (!from || from === row.dataset.id) return;
       var fi = b.options.findIndex(function (o) { return String(o.aid) === from; });
       var item = b.options.splice(fi, 1)[0];
       var ti = b.options.findIndex(function (o) { return String(o.aid) === row.dataset.id; });
-      b.options.splice(ti + (e.offsetY > row.offsetHeight / 2 ? 1 : 0), 0, item);
+      var r = row.getBoundingClientRect();
+      b.options.splice(ti + (e.clientY > r.top + r.height / 2 ? 1 : 0), 0, item);
       render();
     });
   }
@@ -596,6 +600,7 @@
       h('h3', { text: 'Source' }),
       h('div.hintline', { text: (d.source.file || 'imported export') + ' · form ' + d.source.formId +
         (d.source.formVerId ? ' · version ' + d.source.formVerId : '') }),
+      h('div.hintline', { text: 'Read as ' + (d.source.encoding || 'UTF-8') }),
       h('div.hintline', { text: 'Imported ' + (d.source.importedAt || '').replace('T', ' ').slice(0, 16) }),
       h('button.btn.sm', { style: 'margin-top:8px', text: 'Suggest names for unnamed items', onclick: autoName })
     ]));
@@ -775,10 +780,29 @@
   }
 
   /* ---------- wiring ---------- */
+  /* Credible exports come off a Windows box, so a file is as likely to be
+     Windows-1252 as UTF-8. Decoding cp1252 bytes as UTF-8 turns every curly
+     quote and dash into U+FFFD, so try UTF-8 first and fall back the moment
+     it produces one. */
+  function decodeBytes(buf) {
+    var utf8;
+    try { utf8 = new TextDecoder('utf-8').decode(buf); }
+    catch (e) { utf8 = ''; }
+    if (utf8 && utf8.indexOf('\uFFFD') < 0) return { text: utf8, encoding: 'UTF-8' };
+    try {
+      var cp = new TextDecoder('windows-1252').decode(buf);
+      if (cp.indexOf('\uFFFD') < 0) return { text: cp, encoding: 'Windows-1252' };
+    } catch (e) { /* decoder unavailable */ }
+    return { text: utf8, encoding: 'UTF-8 (with unreadable characters)' };
+  }
+
   function readFile(file, cb) {
     var fr = new FileReader();
-    fr.onload = function () { cb(String(fr.result), file.name); };
-    fr.readAsText(file);
+    fr.onload = function () {
+      var d = decodeBytes(fr.result);
+      cb(d.text, file.name, d.encoding);
+    };
+    fr.readAsArrayBuffer(file);
   }
 
   function handleFile(file) {
@@ -860,17 +884,26 @@
     $('zFit').onclick = fit;
     $('showNames').onchange = function (e) { state.showNames = e.target.checked; renderPages(); };
 
+    // Only a drag carrying files gets the full-window drop target. Dragging a
+    // row to reorder it is also a drag, and covering the page with an overlay
+    // meant the row never received the drop.
     var dz = null;
+    function isFileDrag(e) {
+      var t = e.dataTransfer && e.dataTransfer.types;
+      return !!t && Array.prototype.indexOf.call(t, 'Files') >= 0;
+    }
+    function hideZone() { if (dz) { dz.remove(); dz = null; } }
     window.addEventListener('dragover', function (e) {
+      if (!isFileDrag(e)) return;
       e.preventDefault();
       if (!dz) { dz = h('div.dropzone', { text: 'drop export or layout' }); document.body.appendChild(dz); }
     });
-    window.addEventListener('dragleave', function (e) {
-      if (e.relatedTarget === null && dz) { dz.remove(); dz = null; }
-    });
+    window.addEventListener('dragleave', function (e) { if (e.relatedTarget === null) hideZone(); });
+    window.addEventListener('dragend', hideZone);
     window.addEventListener('drop', function (e) {
+      if (!isFileDrag(e)) { hideZone(); return; }
       e.preventDefault();
-      if (dz) { dz.remove(); dz = null; }
+      hideZone();
       if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
     });
 
@@ -880,8 +913,11 @@
     var auto = /[?&]load=([^&]+)/.exec(location.search);
     if (auto) {
       fetch(decodeURIComponent(auto[1]))
-        .then(function (r) { return r.text(); })
-        .then(function (t) { loadCSV(t, decodeURIComponent(auto[1])); })
+        .then(function (r) { return r.arrayBuffer(); })
+        .then(function (buf) {
+          var d = decodeBytes(buf);
+          loadCSV(d.text, decodeURIComponent(auto[1]), d.encoding);
+        })
         .catch(function (e) { console.warn('auto-load failed', e); renderEmpty(); });
       return;
     }

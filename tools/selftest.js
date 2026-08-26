@@ -114,6 +114,60 @@ ok(merged.report.addedAnswers.length === 1 && merged.report.removedAnswers.lengt
   'the merge report names the single addition');
 
 /* ---------------------------------------------------------------- */
+section('Nothing overlaps anything else');
+{
+  const g = freshDoc(raw);
+  // exercise every text-field shape, including a tall one on the label's line
+  const texts = g.blocks.filter((b) => b.kind === 'text');
+  texts[0].labelInline = true;  texts[0].multiline = false;
+  texts[1].labelInline = true;  texts[1].multiline = true;  texts[1].height = 30;
+  texts[2].labelInline = false; texts[2].multiline = true;  texts[2].height = 26;
+  texts[3].labelInline = false; texts[3].multiline = false;
+
+  const gres = window.Layout.layout(g);
+  const box = {};
+  gres.boxes.forEach((b) => { box[b.blockId] = b; });
+
+  let escapes = 0, worst = null;
+  fieldsOf(gres).forEach((f) => {
+    const b = box[f.ref.blockId];
+    if (!b) return;
+    const above = (f.y + f.h) - b.top;          // field pokes out of the top
+    const below = (b.top - b.height) - f.y;      // field hangs below the bottom
+    const over = Math.max(above, 0) + Math.max(below, 0);
+    if (over > 0.01) { escapes++; if (!worst || over > worst.over) worst = { name: f.name, over }; }
+  });
+  ok(escapes === 0, 'every field stays inside the space its item reserved',
+    worst && `${worst.name} escapes by ${worst.over.toFixed(2)}pt (${escapes} fields)`);
+
+  let collisions = 0, example = null;
+  for (let p = 0; p < gres.pages.length; p++) {
+    const onPage = gres.boxes.filter((b) => b.page === p)
+      .slice().sort((a, b) => b.top - a.top);
+    for (let i = 1; i < onPage.length; i++) {
+      const prev = onPage[i - 1], cur = onPage[i];
+      if (cur.top > prev.top - prev.height + 0.01) {
+        collisions++;
+        if (!example) example = `${prev.blockId} ends ${(prev.top - prev.height).toFixed(2)}, ${cur.blockId} starts ${cur.top.toFixed(2)}`;
+      }
+    }
+  }
+  ok(collisions === 0, 'no two items claim the same vertical space', example);
+
+  const tall = fieldsOf(gres).find((f) => f.ref.blockId === texts[1].id);
+  ok(tall && Math.abs(tall.h - 30) < 0.01, 'a multi-line field keeps the height it was given');
+}
+
+section('Unreadable characters are reported');
+{
+  const bad = freshDoc(raw);
+  const t = bad.blocks.find((b) => b.kind === 'text');
+  t.label = 'Discuss in advance (\uFFFDI believe in you\uFFFD)';
+  ok(window.Layout.layout(bad).warnings.some((w) => /could not read/.test(w.msg)),
+    'a label holding U+FFFD raises a warning');
+}
+
+/* ---------------------------------------------------------------- */
 section('Hand-made headings and text');
 const withCustom = freshDoc(raw);
 const anchorIdx = withCustom.blocks.findIndex((b) => b.qid === '615330');

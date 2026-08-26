@@ -104,6 +104,12 @@ when nothing is selected.
   wording, not by pasting HTML.
 - **Text outside WinAnsi** is replaced with `?`. Curly quotes and dashes are
   fine; anything beyond Latin-1 would need an embedded font.
+- **File encoding is sniffed**, not assumed. Credible exports come off a
+  Windows box and are as often Windows-1252 as UTF-8; reading cp1252 bytes as
+  UTF-8 turns every curly quote into `�`. The import tries UTF-8, falls back
+  to Windows-1252 the moment that produces a replacement character, and shows
+  which it used under Document → Source. Anything still unreadable is flagged
+  in the checks bar.
 - **Answers flagged `is_notes`** get a checkbox only, no paired text box, the
   same as the reference template. Add a separate text question if you need one.
 - `?load=<url>` auto-imports on open, but only over `http://` — a browser will

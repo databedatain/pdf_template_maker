@@ -26,6 +26,27 @@
 
   function lineH(size) { return size * 1.2; }
 
+  /* Vertical geometry of a text-field block, as drops from the block's top
+     edge. Measurement and drawing both read this, so the box a block reserves
+     always contains the field it draws.
+
+     An inline field is centred on the label the way the reference template
+     does it. A field taller than one line grows downward from there — growing
+     upward would push it into the item above. */
+  function textGeom(block, st) {
+    var fh = block.multiline ? (block.height || st.fieldH * 2) : st.fieldH;
+    var labelH = lineH(st.qSize);
+    var baseDrop = labelH - st.qSize * 0.25;
+    if (!block.labelInline) {
+      return { fh: fh, baseDrop: baseDrop, fieldTopDrop: labelH,
+               fieldBotDrop: labelH + fh, height: labelH + fh };
+    }
+    var fieldTopDrop = Math.max(0, baseDrop - (st.fieldH - st.fieldPad));
+    return { fh: fh, baseDrop: baseDrop, fieldTopDrop: fieldTopDrop,
+             fieldBotDrop: fieldTopDrop + fh,
+             height: Math.max(baseDrop + st.fieldPad, fieldTopDrop + fh) };
+  }
+
   function fieldNameFor(block, opt) {
     if (!block.name) return '';
     if (block.kind === 'checks') return block.name + '_' + opt.index;
@@ -55,12 +76,7 @@
         * lineH(size) + st.blockGap;
     }
 
-    if (block.kind === 'text') {
-      var fh = block.multiline ? (block.height || st.fieldH * 2) : st.fieldH;
-      if (block.labelInline) h = Math.max(fh, lineH(st.qSize));
-      else h = lineH(st.qSize) + fh;
-      return h + st.blockGap;
-    }
+    if (block.kind === 'text') return textGeom(block, st).height + st.blockGap;
 
     // checks
     var geo = columnGeometry(st, block.columns || 1);
@@ -107,11 +123,12 @@
     }
 
     if (block.kind === 'text') {
-      var fh = block.multiline ? (block.height || st.fieldH * 2) : st.fieldH;
-      var labelBase, fx, fw, fyBottom;
+      var g = textGeom(block, st);
+      var fh = g.fh;
+      var labelBase = y - g.baseDrop, fx, fw;
+      var fyBottom = y - g.fieldBotDrop;
 
       if (block.labelInline) {
-        labelBase = y - lineH(st.qSize) + st.qSize * 0.25;
         var lw = block.label ? M.widthOf(block.label, 'HB', st.qSize) : 0;
         if (block.label) {
           ops.push({ t: 'text', x: st.marginLeft, y: labelBase, size: st.qSize, font: 'HB',
@@ -125,9 +142,7 @@
           fx += hw + st.gap;
         }
         fw = right - fx;
-        fyBottom = labelBase - st.fieldPad;
       } else {
-        labelBase = y - lineH(st.qSize) + st.qSize * 0.25;
         if (block.label) {
           ops.push({ t: 'text', x: st.marginLeft, y: labelBase, size: st.qSize, font: 'HB',
                      color: st.textColor, str: block.label });
@@ -138,7 +153,6 @@
         }
         fx = st.marginLeft;
         fw = contentW;
-        fyBottom = y - lineH(st.qSize) - fh + st.fieldPad;
       }
 
       ops.push({ t: 'line', x1: fx, y1: fyBottom - 0.5, x2: right, y2: fyBottom - 0.5,
@@ -258,6 +272,15 @@
         if (seen[f.name]) warnings.push({ level: 'error', msg: 'Duplicate field name "' + f.name + '"', ref: f.ref });
         seen[f.name] = true;
       });
+    });
+
+    doc.blocks.forEach(function (b) {
+      if (!b.include) return;
+      var texts = [b.label, b.hint].concat((b.options || []).map(function (o) { return o.text; }));
+      if (texts.some(function (t) { return t && t.indexOf('\uFFFD') >= 0; })) {
+        warnings.push({ level: 'warn', ref: { blockId: b.id },
+          msg: '"' + (b.label || '').slice(0, 40) + '" contains characters the import could not read (shown as \uFFFD). Retype them.' });
+      }
     });
 
     doc.blocks.forEach(function (b) {
